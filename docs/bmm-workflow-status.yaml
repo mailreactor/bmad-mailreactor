@@ -28,17 +28,18 @@ workflow_status:
     name: "Discovery"
     workflows:
       - id: "brainstorm-project"
-        status: "optional"
+        status: "docs/brainstorming-session-results-2025-11-24.md"
         agent: "analyst"
         command: "/bmad:bmm:workflows:brainstorm-project"
         
       - id: "research"
-        status: "optional"
+        status: "docs/research-corrected-positioning-2025-11-24.md"
         agent: "analyst"
         command: "/bmad:bmm:workflows:research"
+        note: "Multiple research reports: positioning, EmailEngine analysis, inbound competitors, deployment platforms"
         
       - id: "product-brief"
-        status: "optional"
+        status: "docs/product-brief-mail-reactor-2025-11-24.md"
         agent: "analyst"
         command: "/bmad:bmm:workflows:product-brief"
 
@@ -47,7 +48,7 @@ workflow_status:
     name: "Planning"
     workflows:
       - id: "prd"
-        status: "required"
+        status: "docs/prd.md"
         agent: "pm"
         command: "/bmad:bmm:workflows:prd"
         output: "Product Requirements Document with FRs and NFRs"
@@ -68,22 +69,26 @@ workflow_status:
     name: "Solutioning"
     workflows:
       - id: "create-architecture"
-        status: "required"
+        status: "docs/architecture.md"
         agent: "architect"
         command: "/bmad:bmm:workflows:architecture"
         output: "System architecture document"
+        completed: "2025-11-25"
         
       - id: "create-epics-and-stories"
-        status: "required"
+        status: "docs/epics.md"
         agent: "pm"
         command: "/bmad:bmm:workflows:create-epics-and-stories"
-        note: "Break down PRD into implementable epics and stories"
+        output: "Epic and story breakdown with 6 epics, 41 stories covering 64 MVP FRs"
+        completed: "2025-11-25"
         
       - id: "test-design"
-        status: "recommended"
+        status: "docs/test-design-system.md"
         agent: "tea"
         command: "/bmad:bmm:workflows:test-design"
-        output: "System-level testability review"
+        output: "System-level testability review - PASS with concerns, Sprint 0 required"
+        completed: "2025-11-26"
+        notes: "Environment setup (Nix+direnv+uv) must be verified before other Sprint 0 tasks"
         
       - id: "validate-architecture"
         status: "optional"

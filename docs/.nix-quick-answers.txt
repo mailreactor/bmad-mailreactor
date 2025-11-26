@@ -1,0 +1,104 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║              NIX FLAKE QUESTIONS - QUICK ANSWERS                         ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Q1: Should project version be hardcoded in flake.nix?                   │
+└──────────────────────────────────────────────────────────────────────────┘
+
+   ❌ NO - Don't hardcode version in flake.nix
+   
+   ✅ YES - Version lives in pyproject.toml ONLY
+   
+   Nix reads version dynamically:
+   
+   ```nix
+   # flake.nix
+   projectMeta = builtins.fromTOML (builtins.readFile ./pyproject.toml);
+   version = projectMeta.project.version;  # ← Reads from pyproject.toml
+   ```
+   
+   ```toml
+   # pyproject.toml (SINGLE SOURCE OF TRUTH)
+   [project]
+   version = "0.1.0"  # ← Define here ONLY
+   ```
+   
+   Benefits:
+   ✅ DRY - One place to update version
+   ✅ No sync issues between files
+   ✅ pip and Nix use same version
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Q2: Should Python packages be in Nix or .venv with pyproject.toml?      │
+└──────────────────────────────────────────────────────────────────────────┘
+
+   ✅ HYBRID APPROACH:
+   
+   Nix provides:
+   ├─ Python 3.10 interpreter (version consistency)
+   ├─ System tools (git, docker-compose, just)
+   └─ Native libraries (openssl, libffi)
+   
+   .venv provides:
+   ├─ Python packages (pip install -e ".[dev]")
+   └─ Reads from pyproject.toml
+   
+   Architecture:
+   
+   flake.nix → Provides Python interpreter
+       ↓
+   .venv → pip install packages from pyproject.toml
+       ↓
+   pyproject.toml → Single source of truth for deps
+   
+   Benefits:
+   ✅ Python version guaranteed by Nix
+   ✅ Packages managed by familiar pip
+   ✅ Single dependency list (pyproject.toml)
+   ✅ Fast pip cache, all PyPI packages available
+   ✅ Editable installs work naturally
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ WHAT GOES WHERE                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+   pyproject.toml (EVERYTHING about the project):
+   ├─ Project version
+   ├─ Runtime dependencies
+   └─ Dev dependencies
+   
+   flake.nix (ONLY infrastructure):
+   ├─ Python interpreter version
+   ├─ System-level tools
+   └─ Native libraries
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ WORKFLOWS                                                                │
+└──────────────────────────────────────────────────────────────────────────┘
+
+   Bump version:
+   1. Edit pyproject.toml: version = "0.2.0"
+   2. Done! (Nix reads it automatically)
+   
+   Add Python package:
+   1. Edit pyproject.toml: dependencies = [..., "requests"]
+   2. Run: pip install -e ".[dev]"
+   3. Done! (No flake.nix change needed)
+   
+   Add system tool:
+   1. Edit flake.nix: buildInputs = [..., pkgs.ripgrep]
+   2. Run: direnv reload
+   3. Done!
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ DOCUMENTATION                                                            │
+└──────────────────────────────────────────────────────────────────────────┘
+
+   📄 docs/.nix-architecture-decisions.md   ← Detailed design doc
+   📄 docs/development-practices.md         ← Full Nix setup guide
+   📄 docs/QUICK-SUMMARY-*.md               ← Meeting summary (updated)
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║  Your questions answered! Ready for Sprint 0 implementation. 🚀          ║
+╚══════════════════════════════════════════════════════════════════════════╝
