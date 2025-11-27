@@ -1,0 +1,96 @@
+# Sprint Status - Mail Reactor MVP
+# Generated: 2025-11-26
+# Project: Mail Reactor
+# Tracking System: file-system
+# Story Location: /home/hcvst/dev/bmad/bmad-mailreactor/docs/sprint-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic exists in epic file but not contexted
+#   - contexted: Epic tech context created (required before drafting stories)
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - drafted: Story file created in stories folder
+#   - ready-for-dev: Draft approved and story context created
+#   - in-progress: Developer actively working on implementation
+#   - review: Under SM review (via code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - completed: Retrospective has been done
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epics should be 'contexted' before stories can be 'drafted'
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically drafts next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', SM reviews, then Dev moves to 'done'
+
+generated: 2025-11-26
+project: Mail Reactor
+project_key: mail-reactor-mvp
+tracking_system: file-system
+story_location: /home/hcvst/dev/bmad/bmad-mailreactor/docs/sprint-artifacts
+
+development_status:
+  # Epic 1: Foundation & Zero-Config Deployment (8 stories, 24 FRs)
+  epic-1: backlog
+  1-1-project-structure-and-build-configuration: backlog
+  1-2-fastapi-application-initialization: backlog
+  1-3-structured-logging-with-console-and-json-renderers: backlog
+  1-4-cli-framework-with-start-command: backlog
+  1-5-health-check-endpoint: backlog
+  1-6-openapi-documentation-auto-generation: backlog
+  1-7-response-envelope-and-error-handling-standards: backlog
+  1-8-development-mode-with-hot-reload: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Email Account Connection (8 stories, 10 FRs)
+  epic-2: backlog
+  2-1-provider-configuration-and-basic-auto-detection: backlog
+  2-2-mozilla-thunderbird-autoconfig-fallback: backlog
+  2-3-manual-imap-smtp-configuration-override: backlog
+  2-4-account-connection-validation-and-error-handling: backlog
+  2-5-account-listing-and-retrieval-api: backlog
+  2-6-in-memory-state-management-for-accounts: backlog
+  2-7-startup-account-configuration-via-cli-flag: backlog
+  2-8-account-removal-api: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Email Sending Capability (5 stories, 8 FRs)
+  epic-3: backlog
+  3-1-smtp-client-wrapper-with-async-support: backlog
+  3-2-email-message-builder-and-models: backlog
+  3-3-send-email-api-endpoint: backlog
+  3-4-email-sending-error-handling-and-user-guidance: backlog
+  3-5-email-sending-integration-tests: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Email Retrieval & Search (7 stories, 8 FRs)
+  epic-4: backlog
+  4-1-imap-client-wrapper-with-async-executor-pattern: backlog
+  4-2-email-message-parser-and-normalization: backlog
+  4-3-list-messages-api-endpoint-with-search: backlog
+  4-4-get-single-message-details-api-endpoint: backlog
+  4-5-attachment-download-endpoint: backlog
+  4-6-in-memory-email-caching: backlog
+  4-7-configurable-email-ingestion-time-window: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Production-Ready Security (3 stories, 5 FRs)
+  epic-5: backlog
+  5-1-api-key-generation-and-storage: backlog
+  5-2-api-key-authentication-middleware: backlog
+  5-3-api-key-security-and-best-practices-documentation: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Experimental IMAP-as-Database (4 stories, 9 FRs) - OPTIONAL
+  epic-6: backlog
+  6-1-imap-state-folder-management: backlog
+  6-2-state-serialization-and-imap-storage: backlog
+  6-3-state-reconstruction-on-startup: backlog
+  6-4-imap-state-experimental-mode-documentation: backlog
+  epic-6-retrospective: optional
