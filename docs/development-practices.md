@@ -12,7 +12,52 @@ This document defines the **mandatory development practices** for Mail Reactor. 
 
 ---
 
-## 1. Test-Driven Development (TDD) - REQUIRED
+## 1. Configuration Management Principles - REQUIRED
+
+### Minimal Configuration Approach
+
+**All configuration files MUST follow the "add only when needed" principle.**
+
+#### Core Principles
+- **Add only when needed:** Never add configuration preemptively  
+- **Keep files lean:** Avoid bloat in config files (`.gitignore`, `pyproject.toml`, etc.)
+- **Clear intent:** Every line should have a clear, current purpose
+- **Add later principle:** Better to add when actually needed than guess future needs
+
+#### Examples Applied
+- **`.gitignore`:** Only ignore files/directories we actually generate
+- **`pyproject.toml`:** Only dependencies we actually use right now
+- **`flake.nix`:** Only tools we're currently using in development
+- **Environment configs:** Only settings we actually need today
+
+#### Anti-Patterns to Avoid
+```toml
+# ❌ BAD: Adding dependencies "just in case"
+dependencies = [
+    "fastapi",      # Not using yet
+    "requests",     # Might use later
+    "redis",        # Planning to use
+]
+
+# ✅ GOOD: Add when you actually use it
+dependencies = [
+    # Dependencies added as implementation progresses
+]
+```
+
+#### When to Add Configuration
+1. **Immediate need:** Adding code that requires the dependency
+2. **Current Sprint:** Setting up infrastructure for current sprint tasks
+3. **Active debugging:** Troubleshooting current issues
+
+#### When NOT to Add Configuration  
+1. **Future sprints:** "We'll probably need this later"
+2. **Best practices guides:** "The guide says to include X"
+3. **Just in case:** "Better safe than sorry"
+
+---
+
+## 2. Test-Driven Development (TDD) - REQUIRED
 
 ### Mandate
 
