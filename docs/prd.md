@@ -103,11 +103,18 @@ When developers say "I chose Mail Reactor because I wanted to, not because I had
    - Optional persistence flag (hooks for future Production Pack)
 
 5. **One-Command Installation and Startup**
-   - PyPI package: `pipx install mailreactor`
+   - PyPI package: `pipx install mailreactor` (API mode) or `pip install mailreactor` (library mode)
    - Single command to run: `mailreactor start --account you@gmail.com`
    - Zero system dependencies (pure Python)
    - Sensible defaults (port 8080, localhost binding)
    - Health check endpoint: `GET /health`
+
+6. **Dual-Mode Usage (API and Library)**
+   - **API Mode:** FastAPI HTTP server for REST API access (language-agnostic)
+   - **Library Mode:** Direct Python import for embedded usage (no HTTP server)
+   - Clean separation: `mailreactor.core` (library) + `mailreactor.api` (FastAPI layer)
+   - Event-driven architecture: callbacks (library) or webhooks (API) for real-time notifications
+   - Installation choice: `pip install mailreactor` (core only) vs `pip install mailreactor[api]` (includes FastAPI)
 
 **MVP Success Criteria:**
 - Developer can send first email within 5 minutes of installation
@@ -652,6 +659,16 @@ The following functional requirements define WHAT capabilities Mail Reactor must
 
 **FR-098:** System supports multi-tenancy with isolation and quotas (Scale Pack)
 
+### Dual-Mode Usage (MVP Core Feature)
+
+**FR-099:** System supports direct Python library import without FastAPI dependency, enabling embedded usage in user applications without HTTP server
+
+**FR-100:** Users can register async callback functions for real-time email notifications using decorator pattern when using mailreactor as a library (library mode)
+
+**FR-101:** Users can register webhook URLs via REST API to receive HTTP POST notifications when new emails arrive matching configured filters (API mode)
+
+**FR-102:** System implements transport-agnostic event emitter that dispatches email events to registered handlers without knowledge of transport mechanism (callbacks vs webhooks)
+
 ---
 
 ## Non-Functional Requirements
@@ -831,6 +848,7 @@ Mail Reactor's PRD captures a comprehensive vision for transforming email integr
 
 **Key Strengths:**
 - **Clear Differentiator:** Developer experience as the moat - not just easy, but genuinely delightful
+- **Dual-Mode Architecture:** Both REST API (language-agnostic) AND Python library (embedded usage) from single codebase
 - **Novel Innovation:** IMAP-as-database architecture for lightweight persistence without external dependencies
 - **Strategic Scope:** MVP proves core value (stateless, simple), growth phases add webhooks and plugins, commercial packs provide production-grade reliability
 - **Open Core Model:** MIT-licensed core with clear commercial plugin boundaries (Production Pack, Scale Pack, Conversation Pack)
@@ -840,9 +858,9 @@ Mail Reactor's PRD captures a comprehensive vision for transforming email integr
 Developer experience so good it becomes the reason people choose Mail Reactor. Zero-config deployment that works in seconds, debugging that feels like magic, and an API so intuitive that developers will write blog posts about how much they love using it. This isn't just another email API - it's the email API that makes developers happy.
 
 **Requirements Summary:**
-- **98 Functional Requirements** organized into 13 capability areas
+- **102 Functional Requirements** organized into 14 capability areas
 - **22 Non-Functional Requirements** covering performance, security, reliability, compatibility, maintainability, and observability
-- **MVP Scope:** 62 FRs focused on core email send/receive with stateless architecture
+- **MVP Scope:** 66 FRs focused on core email send/receive with stateless architecture and dual-mode usage
 - **Phase 2 Expansion:** 23 FRs for webhooks, multi-account, OAuth2, and plugin foundation
 - **Growth Features:** 13 FRs for advanced capabilities and commercial packs
 
