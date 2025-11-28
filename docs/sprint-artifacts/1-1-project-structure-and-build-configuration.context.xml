@@ -1,0 +1,319 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>1</storyId>
+    <title>Project Structure and Build Configuration</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-28</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/1-1-project-structure-and-build-configuration.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>developer</asA>
+    <iWant>the Mail Reactor project initialized with proper Python package structure</iWant>
+    <soThat>I can install, develop, and distribute the package reliably</soThat>
+    <tasks>
+      - Create src/mailreactor/ package structure
+      - Create src/mailreactor/__init__.py with version export
+      - Create core/, api/, models/, cli/, utils/ modules with __init__.py
+      - Create tests/ directory structure (unit/, integration/, e2e/, performance/)
+      - Create pyproject.toml with build configuration
+      - Set build-system (hatchling, PEP 517 compliant)
+      - Set project metadata (name, version, description, authors, license)
+      - Set Python version requirement: >=3.10
+      - Add runtime dependencies (imapclient, aiosmtplib, fastapi, uvicorn, pydantic, pydantic-settings, typer, structlog)
+      - Add dev dependencies (pytest, pytest-asyncio, pytest-cov, httpx, ruff, mypy, pre-commit)
+      - Define CLI entry point: mailreactor = "mailreactor.cli:app"
+      - Create README.md with quick start
+      - Create LICENSE file (MIT)
+      - Create .gitignore (Python-specific ignores)
+      - Verify editable installation works (pip install -e ".[dev]")
+      - Write unit tests for package structure
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    **Given** a new Mail Reactor codebase
+    **When** the project structure is initialized
+    **Then** the following structure exists:
+    - src/mailreactor/ with proper __init__.py and package modules
+    - tests/ directory with pytest configuration
+    - pyproject.toml with project metadata and dependencies
+    - README.md with quick start instructions
+    - LICENSE file (MIT license)
+    - .gitignore configured for Python projects
+
+    **And** pyproject.toml includes:
+    - Project name: mailreactor
+    - Python version requirement: >=3.10
+    - Core dependencies: FastAPI 0.122.0, Uvicorn, IMAPClient 3.0.1, aiosmtplib 5.0.0, Typer 0.20.0, Pydantic v2, structlog
+    - Dev dependencies: pytest, pytest-asyncio, ruff, mypy, pytest-cov
+    - Entry point: mailreactor CLI command
+    - Package installable via: pipx install mailreactor
+
+    **And** running pip install -e ".[dev]" installs package in development mode successfully
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <!-- PRD -->
+      <doc>
+        <path>docs/prd.md</path>
+        <title>Mail Reactor Product Requirements Document</title>
+        <section>Installation & Deployment</section>
+        <snippet>FR-032: Users can install Mail Reactor via PyPI using pipx install mailreactor. FR-033: System has zero external system dependencies (pure Python, no database, no Redis). The package uses modern pyproject.toml (PEP 621) instead of setup.py.</snippet>
+      </doc>
+      <doc>
+        <path>docs/prd.md</path>
+        <title>Mail Reactor Product Requirements Document</title>
+        <section>Dual-Mode Usage (MVP Core Feature)</section>
+        <snippet>FR-099: System supports direct Python library import without FastAPI dependency, enabling embedded usage in user applications without HTTP server. Package structure enforces separation validated in SPIKE-001.</snippet>
+      </doc>
+
+      <!-- Tech Spec Epic 1 -->
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification: Foundation & Zero-Config Deployment</title>
+        <section>Overview</section>
+        <snippet>Epic 1 delivers the foundational infrastructure for Mail Reactor - a zero-configuration, developer-first email API service. This epic establishes the core FastAPI application, CLI framework, structured logging, health monitoring, and API documentation that all subsequent features will build upon. Foundation prioritizes exceptional developer experience.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification: Foundation & Zero-Config Deployment</title>
+        <section>Dependencies and Integrations</section>
+        <snippet>Default Installation: All dependencies installed by default for full API server experience. Python Version: >=3.10 (modern async features, structural pattern matching, better type hints). Build System: Hatchling (modern, PEP 517 compliant). Users who want library-only mode simply import from mailreactor.core - FastAPI is installed but never loaded unless user imports from mailreactor.api. This architectural separation (validated in SPIKE-001) enables dual-mode usage from a single installation.</snippet>
+      </doc>
+
+      <!-- Architecture -->
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Mail Reactor Architecture</title>
+        <section>Project Structure</section>
+        <snippet>Modern Python package with src/ layout using src/mailreactor/ namespace. Structure includes: api/ for FastAPI routers, core/ for business logic (zero FastAPI coupling), models/ for Pydantic schemas, cli/ for Typer commands, utils/ for shared utilities. Tests organized into unit/, integration/, e2e/, performance/.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Mail Reactor Architecture</title>
+        <section>ADR-001: Use FastAPI for Web Framework</section>
+        <snippet>Use FastAPI 0.122.0 as the web framework. MIT licensed, native async/await support, automatic OpenAPI documentation generation, Pydantic integration for validation.</snippet>
+      </doc>
+
+      <!-- ADR-007 -->
+      <doc>
+        <path>docs/ADR-007-event-driven-architecture.md</path>
+        <title>ADR-007: Event-Driven Architecture for Real-Time Notifications</title>
+        <section>Decision</section>
+        <snippet>We will implement a transport-agnostic event system in mailreactor.core that: (1) Emits events when emails are received/sent, (2) Supports async callback registration (library mode), (3) Provides foundation for webhook delivery (API mode), (4) Works independently of FastAPI or any HTTP framework. Core library has zero FastAPI coupling - validated via SPIKE-001.</snippet>
+      </doc>
+    </docs>
+
+    <code>
+      <!-- Existing spike work detected -->
+      <artifact>
+        <path>mailreactor.bak/pyproject.toml</path>
+        <kind>config</kind>
+        <symbol>pyproject.toml</symbol>
+        <lines>1-63</lines>
+        <reason>Existing pyproject.toml from Sprint 0 setup - demonstrates build configuration, dependencies, and optional dev dependencies. Use as reference for Story 1.1 implementation.</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor.bak/src/mailreactor/__init__.py</path>
+        <kind>module</kind>
+        <symbol>__init__.py</symbol>
+        <lines>all</lines>
+        <reason>Existing package initialization from spike work. Demonstrates package structure pattern.</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor.bak/src/mailreactor/core/__init__.py</path>
+        <kind>module</kind>
+        <symbol>core/__init__.py</symbol>
+        <lines>all</lines>
+        <reason>Core module initialization demonstrating separation between core (library) and api layers per FR-099.</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor.bak/src/mailreactor/core/events.py</path>
+        <kind>module</kind>
+        <symbol>EventEmitter</symbol>
+        <lines>all</lines>
+        <reason>EventEmitter implementation from SPIKE-001 validating dual-mode architecture (FR-102). Core module with zero FastAPI imports.</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor.bak/tests/unit/__init__.py</path>
+        <kind>test</kind>
+        <symbol>tests.unit</symbol>
+        <lines>all</lines>
+        <reason>Test structure example showing unit/, integration/, e2e/, performance/ organization.</reason>
+      </artifact>
+    </code>
+
+    <dependencies>
+      <runtime>
+        <package name="imapclient" version=">=3.0.0" license="BSD-3">IMAP client (unused in Epic 1, foundation for Epic 2)</package>
+        <package name="aiosmtplib" version=">=3.0.0" license="MIT">Async SMTP client (unused in Epic 1, foundation for Epic 3)</package>
+        <package name="fastapi" version=">=0.122.0" license="MIT">Web framework, OpenAPI generation, dependency injection</package>
+        <package name="uvicorn[standard]" version="latest" license="BSD-3">ASGI server for FastAPI</package>
+        <package name="pydantic" version=">=2.0.0" license="MIT">Data validation (bundled with FastAPI)</package>
+        <package name="pydantic-settings" version="latest" license="MIT">Environment-based configuration</package>
+        <package name="typer" version=">=0.20.0" license="MIT">CLI framework for server commands</package>
+        <package name="structlog" version="latest" license="MIT/Apache-2.0">Structured logging with console/JSON renderers</package>
+      </runtime>
+      <dev>
+        <package name="pytest" version="latest">Test framework</package>
+        <package name="pytest-asyncio" version="latest">Async test support</package>
+        <package name="pytest-cov" version="latest">Coverage reporting</package>
+        <package name="httpx" version="latest">FastAPI TestClient</package>
+        <package name="ruff" version="latest">Fast linter and formatter</package>
+        <package name="mypy" version="latest">Static type checking</package>
+        <package name="pre-commit" version="latest">Git hooks for code quality</package>
+      </dev>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <!-- Development constraints from Dev Notes and architecture -->
+    <constraint priority="critical">Follow Architecture doc sections "Project Structure" and "Technology Stack Details"</constraint>
+    <constraint priority="critical">Implement ADR-001: Modern pyproject.toml (PEP 621) instead of setup.py</constraint>
+    <constraint priority="critical">Implement ADR-005: Use Typer for CLI framework</constraint>
+    <constraint priority="critical">Use modern Python packaging with src/ layout (prevents import confusion)</constraint>
+    <constraint priority="critical">Core library (src/mailreactor/core/) must have ZERO FastAPI imports (FR-099)</constraint>
+    <constraint priority="critical">API layer (src/mailreactor/api/) can depend on FastAPI</constraint>
+    <constraint priority="critical">Package structure enforces separation validated in SPIKE-001</constraint>
+    <constraint priority="critical">Single installation provides both modes (FastAPI only loads if imported)</constraint>
+    <constraint priority="high">All dependencies are MIT-compatible per Architecture requirements</constraint>
+    <constraint priority="high">Hatchling (modern, PEP 517 compliant) - no setup.py or setup.cfg</constraint>
+    <constraint priority="high">All config in pyproject.toml</constraint>
+    <constraint priority="medium">Python 3.10+ required (leverage modern async features)</constraint>
+  </constraints>
+
+  <interfaces>
+    <!-- Package installation interfaces -->
+    <interface>
+      <name>pipx install mailreactor</name>
+      <kind>package_installation</kind>
+      <signature>Command-line installation via pipx</signature>
+      <path>pyproject.toml [project.scripts]</path>
+      <description>End users install full API server experience. Creates isolated environment, adds mailreactor command to PATH.</description>
+    </interface>
+    <interface>
+      <name>pip install mailreactor</name>
+      <kind>package_installation</kind>
+      <signature>Library installation via pip</signature>
+      <path>pyproject.toml [project.scripts]</path>
+      <description>Same installation as pipx, but in current environment. Use only: from mailreactor.core import ... for library mode. FastAPI installed but never imported.</description>
+    </interface>
+    <interface>
+      <name>pip install -e ".[dev]"</name>
+      <kind>development_installation</kind>
+      <signature>Editable installation with dev dependencies</signature>
+      <path>pyproject.toml [project.optional-dependencies.dev]</path>
+      <description>Installs runtime + development dependencies. Editable mode for rapid iteration.</description>
+    </interface>
+    <interface>
+      <name>mailreactor (CLI entry point)</name>
+      <kind>command_line_interface</kind>
+      <signature>mailreactor = "mailreactor.cli:app"</signature>
+      <path>pyproject.toml [project.scripts]</path>
+      <description>CLI command created by package installation. Will be implemented in Story 1.4.</description>
+    </interface>
+    <interface>
+      <name>from mailreactor.core import EventEmitter</name>
+      <kind>library_import</kind>
+      <signature>Python import statement for library mode</signature>
+      <path>src/mailreactor/core/__init__.py</path>
+      <description>Library mode usage (FR-099). Zero FastAPI imports validated via sys.modules check.</description>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Unit tests verify package can be imported without errors, version string is accessible, all submodules exist and can be imported, and core module has no FastAPI in sys.modules after import. Integration tests verify editable installation in clean venv, CLI entry point is created, and all dependencies install correctly. Validation involves running pip install -e ".[dev]" successfully, running python -c "import mailreactor; print(mailreactor.__version__)", and attempting mailreactor --help (will fail in Story 1.1, succeeds in Story 1.4).
+    </standards>
+    <locations>
+      tests/unit/ - Package structure tests
+      tests/integration/ - Installation tests
+      tests/e2e/ - Full workflow tests
+      tests/performance/ - Performance baselines
+    </locations>
+    <ideas>
+      <!-- Tests for AC-1: Installation -->
+      <test id="test_install_fresh_venv" ac="AC-1">
+        <description>Install Mail Reactor via pip in fresh virtual environment on macOS/Linux/Windows</description>
+        <type>integration</type>
+        <priority>critical</priority>
+      </test>
+      
+      <!-- Tests for AC-20: Package structure -->
+      <test id="test_import_mailreactor" ac="AC-20">
+        <description>Test: import mailreactor succeeds without errors</description>
+        <type>unit</type>
+        <priority>critical</priority>
+      </test>
+      <test id="test_mailreactor_version" ac="AC-20">
+        <description>Test: mailreactor.__version__ returns expected version "0.1.0"</description>
+        <type>unit</type>
+        <priority>critical</priority>
+      </test>
+      <test id="test_submodule_imports" ac="AC-20">
+        <description>Test: All submodules (core, api, models, cli, utils) can be imported</description>
+        <type>unit</type>
+        <priority>critical</priority>
+      </test>
+      
+      <!-- Tests for AC-25 (FR-099): Core has zero FastAPI imports -->
+      <test id="test_core_no_fastapi" ac="AC-25">
+        <description>Test: from mailreactor.core import EventEmitter succeeds with zero FastAPI modules in sys.modules</description>
+        <type>unit</type>
+        <priority>critical</priority>
+      </test>
+      
+      <!-- Tests for AC-27: Package installation -->
+      <test id="test_pipx_install" ac="AC-27">
+        <description>Test: pipx install mailreactor installs all dependencies and mailreactor start command is created</description>
+        <type>integration</type>
+        <priority>critical</priority>
+      </test>
+      
+      <!-- Tests for editable installation -->
+      <test id="test_editable_install" ac="Story AC">
+        <description>Test: pip install -e ".[dev]" in test environment, verify all dependencies install successfully, package is importable, entry point is created</description>
+        <type>integration</type>
+        <priority>high</priority>
+      </test>
+      
+      <!-- Tests for directory structure -->
+      <test id="test_directory_structure" ac="Story AC">
+        <description>Test: Verify src/mailreactor/ structure with all required modules (__init__.py in core/, api/, models/, cli/, utils/)</description>
+        <type>unit</type>
+        <priority>high</priority>
+      </test>
+      <test id="test_tests_structure" ac="Story AC">
+        <description>Test: Verify tests/ structure with unit/, integration/, e2e/, performance/, conftest.py</description>
+        <type>unit</type>
+        <priority>high</priority>
+      </test>
+      
+      <!-- Tests for pyproject.toml -->
+      <test id="test_pyproject_metadata" ac="Story AC">
+        <description>Test: Verify pyproject.toml has correct project name, version, description, license (MIT), Python requirement (>=3.10)</description>
+        <type>unit</type>
+        <priority>high</priority>
+      </test>
+      <test id="test_pyproject_dependencies" ac="Story AC">
+        <description>Test: Verify all required runtime dependencies are listed with correct version constraints</description>
+        <type>unit</type>
+        <priority>high</priority>
+      </test>
+      <test id="test_pyproject_dev_dependencies" ac="Story AC">
+        <description>Test: Verify all dev dependencies are in [project.optional-dependencies.dev]</description>
+        <type>unit</type>
+        <priority>high</priority>
+      </test>
+      <test id="test_cli_entry_point" ac="Story AC">
+        <description>Test: Verify [project.scripts] has mailreactor = "mailreactor.cli:app"</description>
+        <type>unit</type>
+        <priority>high</priority>
+      </test>
+    </ideas>
+  </tests>
+</story-context>
