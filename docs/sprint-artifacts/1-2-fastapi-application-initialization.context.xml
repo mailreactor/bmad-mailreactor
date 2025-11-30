@@ -1,0 +1,297 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>2</storyId>
+    <title>FastAPI Application Initialization</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-30</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>/home/hcvst/dev/bmad/bmad-mailreactor/docs/sprint-artifacts/1-2-fastapi-application-initialization.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a developer</asA>
+    <iWant>the FastAPI application properly initialized with core middleware</iWant>
+    <soThat>the API server can start and handle requests with proper error handling and logging</soThat>
+    <tasks>
+- Implement EventEmitter class (AC: EventEmitter implementation, FR-102)
+  - Create `src/mailreactor/core/events.py` module
+  - Define `Event` dataclass with `event_type` and `data` fields
+  - Implement `EventEmitter` class with `_handlers` dict storage
+  - Implement `on(event_type)` decorator for handler registration
+  - Implement `emit(event)` method with `asyncio.gather()` concurrent execution
+  - Add exception isolation (return_exceptions=True in gather)
+  - Verify zero FastAPI imports in module
+  - Write unit tests for handler registration and concurrent execution
+
+- Create exception hierarchy (AC: exceptions.py defines...)
+  - Create `src/mailreactor/exceptions.py` module
+  - Define `MailReactorException` base class with `message` and `status_code`
+  - Define `AccountError(MailReactorException)` with 400 status code
+  - Define `ConnectionError(MailReactorException)` with 503 status code
+  - Define `AuthenticationError(MailReactorException)` with 401 status code
+  - Define `MessageError(MailReactorException)` with 400 status code
+  - Define `StateError(MailReactorException)` with 500 status code
+  - Write unit tests for exception instantiation and inheritance
+
+- Create Pydantic Settings configuration (AC: config.py defines...)
+  - Create `src/mailreactor/config.py` module
+  - Define `Settings` class inheriting from `BaseSettings`
+  - Add `host: str = "127.0.0.1"` field
+  - Add `port: int = 8000` field
+  - Add `log_level: str = "INFO"` field
+  - Add `api_key_header: str = "X-API-Key"` field
+  - Configure `model_config` with `env_prefix="MAILREACTOR_"` and `env_file=".env"`
+  - Create singleton `settings` instance
+  - Write unit tests for settings loading and environment variable override
+
+- Initialize FastAPI application (AC: main.py creates FastAPI app)
+  - Create `src/mailreactor/main.py` module
+  - Create `create_app()` factory function
+  - Initialize FastAPI app with title "Mail Reactor API" and version "0.1.0"
+  - Configure OpenAPI URLs: `/docs`, `/redoc`, `/openapi.json`
+  - Add CORS middleware with configurable origins (disabled by default)
+  - Register exception handler for `MailReactorException`
+  - Register exception handler for generic `Exception` (500 errors)
+  - Create app instance at module level for uvicorn entry point
+  - Write integration tests for app initialization and exception handlers
+
+- Add request ID middleware (AC: NFR-O3 tracing)
+  - Create `src/mailreactor/api/dependencies.py` module
+  - Implement `request_id_middleware` to generate unique request IDs
+  - Inject request_id into response headers (`X-Request-ID`)
+  - Bind request_id to structlog context for correlation
+  - Register middleware in `main.py` app initialization
+  - Write integration tests for request ID generation and propagation
+
+- Testing and validation (AC: Application can be imported without errors)
+  - Write unit test: Import main.py successfully
+  - Write unit test: Verify app title and version
+  - Write integration test: Start test server and verify /docs accessible
+  - Write integration test: Trigger custom exception and verify error response
+  - Write integration test: Verify CORS middleware behavior
+  - Verify core module has zero FastAPI imports (FR-099 validation)
+</tasks>
+  </story>
+
+  <acceptanceCriteria>
+**Given** the project structure from Story 1.1  
+**When** the FastAPI application is initialized  
+**Then** `src/mailreactor/main.py` creates a FastAPI app instance with:
+- App title: "Mail Reactor API"
+- App version: "0.1.0"
+- OpenAPI documentation enabled at `/docs` (Swagger UI)
+- ReDoc documentation at `/redoc`
+- CORS middleware configured (disabled by default, configurable)
+- Exception handlers for custom `MailReactorException` hierarchy
+
+**And** `src/mailreactor/exceptions.py` defines:
+- Base `MailReactorException(message, status_code)` class
+- Derived exceptions: `AccountError`, `ConnectionError`, `AuthenticationError`, `MessageError`, `StateError`
+- Each exception includes HTTP status code mapping
+
+**And** `src/mailreactor/config.py` defines Pydantic Settings model:
+- `host: str = "127.0.0.1"` (localhost by default per FR-036)
+- `port: int = 8000`
+- `log_level: str = "INFO"`
+- `api_key_header: str = "X-API-Key"`
+- Environment variable prefix: `MAILREACTOR_`
+- Support for `.env` file loading
+
+**And** Application can be imported and initialized without errors
+
+**And** EventEmitter class implemented in `src/mailreactor/core/events.py` with:
+- `on(event_type: str)` decorator for registering async event handlers
+- `emit(event: Event)` method for concurrent async handler execution via `asyncio.gather()`
+- Transport-agnostic design (no FastAPI imports in core module)
+- Exception isolation (handler failures don't crash emit)
+
+**Prerequisites:** Story 1.1 (project structure exists)
+</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/prd.md</path>
+        <title>Product Requirements Document</title>
+        <section>API Design &amp; Standards (FR-055 to FR-062)</section>
+        <snippet>All API endpoints accept and return JSON with Content-Type: application/json. All API responses use consistent envelope format with data and error fields. System uses standard HTTP status codes (200, 201, 400, 401, 404, 500).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>ADR-001: Use FastAPI for Web Framework</section>
+        <snippet>FastAPI 0.122.0 provides automatic OpenAPI generation, native async/await support, Pydantic integration, and excellent performance. All API endpoints use FastAPI decorators.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Error Handling Pattern</section>
+        <snippet>Custom exception hierarchy with base MailReactorException. FastAPI exception handlers return consistent error responses with error code, message, and details. HTTP status codes mapped per exception type.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture Document</title>
+        <section>Configuration Pattern</section>
+        <snippet>Pydantic Settings for type-safe environment variable support with MAILREACTOR_ prefix. Settings model includes host, port, log_level, api_key_header fields with sensible defaults.</snippet>
+      </doc>
+      <doc>
+        <path>docs/ADR-007-event-driven-architecture.md</path>
+        <title>ADR-007: Event-Driven Architecture</title>
+        <section>EventEmitter Implementation (FR-102)</section>
+        <snippet>Transport-agnostic event system in core/events.py with async handler registration via decorator pattern and concurrent execution via asyncio.gather(). Zero FastAPI dependencies in core module validated by SPIKE-001.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic 1 Technical Specification</title>
+        <section>Detailed Design - Services and Modules</section>
+        <snippet>Story 1.2 deliverables: core/events.py (EventEmitter), main.py (FastAPI app factory), config.py (Pydantic Settings), exceptions.py (custom hierarchy), api/dependencies.py (request ID middleware).</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Story 1.2: FastAPI Application Initialization</section>
+        <snippet>Creates FastAPI app instance with title "Mail Reactor API" version "0.1.0", OpenAPI at /docs and /redoc, CORS middleware, exception handlers for MailReactorException hierarchy, Pydantic Settings with environment variable support.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/1-1-project-structure-and-build-configuration.md</path>
+        <title>Story 1.1 Completion</title>
+        <section>Dev Notes - Learnings from Previous Story</section>
+        <snippet>Package structure established with src/mailreactor/ namespace, all module directories created with proper __init__.py files, pyproject.toml configured with FastAPI 0.122.0, Pydantic v2, pydantic-settings, structlog. Zero FastAPI coupling in core validated.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/mailreactor/core/__init__.py</path>
+        <kind>module</kind>
+        <symbol>__init__</symbol>
+        <lines>1-10</lines>
+        <reason>Core module initialization - must remain FastAPI-free per FR-099 validation</reason>
+      </artifact>
+      <artifact>
+        <path>src/mailreactor/api/__init__.py</path>
+        <kind>module</kind>
+        <symbol>__init__</symbol>
+        <lines>1-10</lines>
+        <reason>API module initialization for FastAPI routers</reason>
+      </artifact>
+      <artifact>
+        <path>src/mailreactor/models/__init__.py</path>
+        <kind>module</kind>
+        <symbol>__init__</symbol>
+        <lines>1-10</lines>
+        <reason>Pydantic models module initialization</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <python>
+        <package name="fastapi" version=">=0.122.0" />
+        <package name="uvicorn" version="latest" />
+        <package name="pydantic" version=">=2.0.0" />
+        <package name="pydantic-settings" version="latest" />
+        <package name="structlog" version="latest" />
+      </python>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>
+      <name>FR-099: Core/API Separation</name>
+      <rule>EventEmitter in core/events.py MUST NOT import FastAPI, Pydantic HTTP models, or mailreactor.api.* modules</rule>
+      <validation>After implementation, verify `import mailreactor.core.events` does NOT load fastapi in sys.modules</validation>
+    </constraint>
+    <constraint>
+      <name>Import Boundaries</name>
+      <rule>core/events.py CAN import: stdlib (asyncio, dataclasses, typing), mailreactor.models.* only</rule>
+      <validation>SPIKE-001 validated zero FastAPI coupling</validation>
+    </constraint>
+    <constraint>
+      <name>Error Response Format</name>
+      <rule>All API errors must use consistent envelope: {"error": {"code": "...", "message": "..."}}</rule>
+      <validation>Every exception handler must return this format</validation>
+    </constraint>
+    <constraint>
+      <name>Settings Configuration</name>
+      <rule>All config via Pydantic Settings with MAILREACTOR_ prefix, defaults favor security (localhost binding, INFO log level)</rule>
+      <validation>Settings must support .env file loading and environment variable override</validation>
+    </constraint>
+    <constraint>
+      <name>NFR-O3: Request Tracing</name>
+      <rule>Generate unique request_id (UUID) per API request, inject into response headers as X-Request-ID, bind to structlog context</rule>
+      <validation>Middleware must generate request_id before any endpoint processing</validation>
+    </constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>EventEmitter.on</name>
+      <kind>Python decorator</kind>
+      <signature>def on(self, event_type: str) -&gt; Callable[[Callable[[Event], Awaitable[None]]], Callable[[Event], Awaitable[None]]]</signature>
+      <path>src/mailreactor/core/events.py</path>
+      <usage>Decorator for registering async event handlers</usage>
+    </interface>
+    <interface>
+      <name>EventEmitter.emit</name>
+      <kind>async method</kind>
+      <signature>async def emit(self, event: Event) -&gt; None</signature>
+      <path>src/mailreactor/core/events.py</path>
+      <usage>Emit event to all registered handlers concurrently via asyncio.gather</usage>
+    </interface>
+    <interface>
+      <name>FastAPI Exception Handler</name>
+      <kind>FastAPI exception handler</kind>
+      <signature>@app.exception_handler(MailReactorException) async def handler(request: Request, exc: MailReactorException) -&gt; JSONResponse</signature>
+      <path>src/mailreactor/main.py</path>
+      <usage>Convert MailReactorException to HTTP error response with standard envelope</usage>
+    </interface>
+    <interface>
+      <name>Pydantic Settings</name>
+      <kind>configuration class</kind>
+      <signature>class Settings(BaseSettings): host: str = "127.0.0.1"; port: int = 8000; log_level: str = "INFO"; api_key_header: str = "X-API-Key"</signature>
+      <path>src/mailreactor/config.py</path>
+      <usage>Type-safe configuration with environment variable support</usage>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      <standard>Use pytest with pytest-asyncio for async test support. Test structure: tests/unit/ for EventEmitter, config, exceptions; tests/integration/ for FastAPI app initialization, exception handlers. Use FastAPI TestClient from httpx for API endpoint testing. Mock external dependencies at appropriate boundaries. Type hints throughout test code. Coverage target: >80% for core modules, >90% for utils.</standard>
+    </standards>
+    <locations>
+      <location>tests/unit/test_events.py</location>
+      <location>tests/unit/test_exceptions.py</location>
+      <location>tests/unit/test_config.py</location>
+      <location>tests/integration/test_app_initialization.py</location>
+      <location>tests/integration/test_error_handling.py</location>
+    </locations>
+    <ideas>
+      <idea ac_id="EventEmitter implementation">
+        <test>test_event_emitter_handler_registration - Verify decorator registers async handlers correctly</test>
+        <test>test_event_emitter_concurrent_execution - Verify asyncio.gather executes handlers concurrently</test>
+        <test>test_event_emitter_exception_isolation - Verify return_exceptions=True prevents handler failures from crashing emit</test>
+        <test>test_event_emitter_zero_fastapi_imports - Verify sys.modules has no fastapi.* after importing mailreactor.core.events</test>
+      </idea>
+      <idea ac_id="Exception hierarchy">
+        <test>test_mailreactor_exception_base - Verify base exception has message and status_code attributes</test>
+        <test>test_derived_exceptions - Verify AccountError (400), ConnectionError (503), AuthenticationError (401), MessageError (400), StateError (500) inherit correctly</test>
+        <test>test_exception_http_status_mapping - Verify each exception type maps to correct HTTP status code</test>
+      </idea>
+      <idea ac_id="Pydantic Settings">
+        <test>test_settings_defaults - Verify host=127.0.0.1, port=8000, log_level=INFO defaults</test>
+        <test>test_settings_env_override - Verify MAILREACTOR_HOST overrides default via environment variable</test>
+        <test>test_settings_dotenv_loading - Verify Settings loads from .env file</test>
+      </idea>
+      <idea ac_id="FastAPI app initialization">
+        <test>test_app_title_version - Verify app.title and app.version match "Mail Reactor API" and "0.1.0"</test>
+        <test>test_openapi_urls - Verify /docs, /redoc, /openapi.json endpoints exist</test>
+        <test>test_cors_middleware - Verify CORS middleware configuration (disabled by default)</test>
+        <test>test_exception_handlers_registered - Verify MailReactorException and generic Exception handlers are registered</test>
+      </idea>
+      <idea ac_id="Request ID middleware">
+        <test>test_request_id_generation - Verify unique request_id (UUID) generated per request</test>
+        <test>test_request_id_response_header - Verify X-Request-ID header present in response</test>
+        <test>test_request_id_structlog_binding - Verify request_id bound to structlog context for correlation</test>
+      </idea>
+    </ideas>
+  </tests>
+</story-context>
