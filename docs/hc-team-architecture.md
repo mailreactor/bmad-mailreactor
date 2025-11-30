@@ -6,7 +6,9 @@
 The project root houses the project docs and tasks.
 
 ### Python Project Root: `/home/hcvst/dev/bmad/bmad-mailreactor/mailreactor`
-The Python project root contains our deliverable that we ship. Code, contributer docs and end-user docs.
+The Python projec`t root contains our deliverable that we ship. Code, contributer docs and end-user docs.
+
+### Python Tests: `/home/hcvst/dev/bmad/bmad-mailreactor/mailreactor/tests`
 
 ### Two Documentation Layers
 As a consequence of the above we have two doc locations:
