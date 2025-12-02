@@ -1,6 +1,6 @@
 # Story 1.3: Structured Logging with Console and JSON Renderers
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
@@ -176,6 +176,7 @@ so that the quick start experience is clear while still supporting production lo
   - [ ] Write integration test: Logger can switch between console and JSON renderers
   - [ ] Manual test: Run `mailreactor start` and verify console output is readable
   - [ ] Manual test: Run with `--json-logs` and verify JSON output
+  - [ ] Verify test coverage meets target: 80%+ for logging module
 
 ## Dev Notes
 
@@ -201,10 +202,11 @@ so that the quick start experience is clear while still supporting production lo
 **ADR-006: Structured Logging (structlog)**
 - Use structlog for structured logging with key=value pairs
 - Single internal pipeline with different renderers (not separate logging systems)
-- Console renderer for development (human-readable with colors)
+- Console renderer for development (human-readable with colors via `rich` library)
 - JSON renderer for production (machine-parseable for log aggregation)
 - ISO 8601 timestamps in UTC timezone
 - Context binding support for request tracing
+- **Dependency Note**: `rich` library required for colored console output - verify it's included in pyproject.toml dependencies or as a structlog optional dependency
 
 **NFR-O1: Logging Requirements**
 - Structured logging with configurable levels (DEBUG, INFO, WARNING, ERROR)
@@ -428,6 +430,7 @@ async def request_id_middleware(request: Request, call_next):
 - Test sensitive data redaction
 - Test context binding and propagation
 - Mock rich.Console to capture output for assertions
+- **Target Coverage**: 80%+ for `utils/logging.py` module
 
 **Integration Tests:**
 - Test FastAPI app startup logs configuration
@@ -485,6 +488,13 @@ async def request_id_middleware(request: Request, call_next):
 - (To be filled by dev agent)
 
 ## Change Log
+
+**2025-12-02:** Story 1.3 validated and refined by SM agent
+- ✅ Validation completed: PASS (0 critical, 0 major, 0 minor issues)
+- Added `rich` dependency note in Architecture Patterns section
+- Added test coverage target: 80%+ for logging module
+- Added coverage verification subtask to Testing and validation task
+- Status: ready-for-dev
 
 **2025-12-02:** Story 1.3 drafted by SM agent
 - Extracted requirements from Tech Spec Epic 1 and epics.md Story 1.3
