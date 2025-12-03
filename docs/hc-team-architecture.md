@@ -32,8 +32,21 @@ and use libraries canonically.
 ### Focused sharp code
 Keep code and comments focused and sharp, easy to understand and minimal.
 
-### Tests
-Only test functionality that we have added. Do not test Python machinery.
+### Testing Principle:
+
+• ✅ ONLY test functionality WE have added
+• ❌ DO NOT test Python machinery
+• ❌ DO NOT test 3rd party library functionality
+• ❌ DO NOT test framework behavior
+
+Examples:
+
+• ✅ Test: Our business logic, our domain rules, our API endpoints
+• ❌ Don't test: FastAPI routing works, Pydantic validates, logging library logs
+• ✅ Test: Our email parsing logic
+• ❌ Don't test: That email.parser.Parser actually parses emails
+
+Keep tests focused and minimal - only verify the value we're adding to the codebase, not that Python or our dependencies work correctly.
 
 ### Git Operations
 - **NO GIT COMMITS** - HC handles ALL git operations
