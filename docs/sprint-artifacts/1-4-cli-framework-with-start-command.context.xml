@@ -1,0 +1,265 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>1.4</storyId>
+    <title>CLI Framework with Start Command</title>
+    <status>drafted</status>
+    <generatedAt>2025-12-03</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/1-4-cli-framework-with-start-command.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>developer</asA>
+    <iWant>a CLI command `mailreactor start` to launch the API server</iWant>
+    <soThat>I can start Mail Reactor with a single command in under 5 seconds</soThat>
+    <tasks>
+      - Create CLI server module (src/mailreactor/cli/server.py)
+      - Implement start command with Typer decorators and options
+      - Configure logging based on CLI flags (--json-logs, --log-level)
+      - Load configuration from environment and CLI overrides
+      - Start Uvicorn server with FastAPI app
+      - Display startup messages (console or JSON format)
+      - Implement graceful shutdown (SIGINT/SIGTERM handlers)
+      - Create CLI entry point module (src/mailreactor/__main__.py)
+      - Configure console script entry point in pyproject.toml
+      - Validate startup performance (<3 seconds cold start - NFR-P1)
+      - Implement localhost default binding (127.0.0.1 - FR-036)
+      - Add CLI help and documentation (--help output)
+      - Write comprehensive tests (unit, integration, e2e, performance)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    - src/mailreactor/cli/server.py provides start() command using Typer
+    - CLI options: --host (default: 127.0.0.1), --port (default: 8000), --log-level (default: INFO)
+    - CLI flag: --json-logs enables JSON log output (default: pretty console)
+    - CLI option: --account (placeholder for Epic 2, not implemented)
+    - Configures logging based on --json-logs flag (pretty console by default)
+    - Starts Uvicorn server with FastAPI app from create_app()
+    - Displays startup messages with API URL and documentation links
+    - src/mailreactor/__main__.py defines CLI entry point
+    - Creates Typer app instance and registers start command
+    - Enables python -m mailreactor start invocation
+    - Running mailreactor start initializes logging (console renderer by default)
+    - Loads configuration from environment variables with CLI overrides
+    - Starts Uvicorn server on configured host/port
+    - Displays console startup messages with color (INFO level)
+    - Or JSON logs if --json-logs flag provided
+    - Completes startup in under 3 seconds (NFR-P1)
+    - Server binds to localhost (127.0.0.1) by default (FR-036)
+    - Server responds to Ctrl+C gracefully (clean shutdown)
+    - Prerequisites: Stories 1.1, 1.2, 1.3 (project structure, FastAPI, logging)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Mail Reactor Architecture</title>
+        <section>ADR-005: Typer for CLI Framework</section>
+        <snippet>Use Typer 0.20.0 for all CLI commands with type hint-based API (like FastAPI philosophy). Automatic help generation from docstrings. CLI commands use @app.command() decorator pattern. MIT licensed.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Mail Reactor Architecture</title>
+        <section>Project Structure - CLI Module</section>
+        <snippet>CLI module located at src/mailreactor/cli/ contains server.py (start/stop commands), account_cli.py (account management), and utils.py (CLI utilities). Entry point at src/mailreactor/__main__.py.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification: Foundation & Zero-Config Deployment</title>
+        <section>CLI Framework Pattern</section>
+        <snippet>Use Typer app instance with @app.command() decorator. Configure logging FIRST before any other initialization. Load Settings with CLI overrides. Start Uvicorn with uvicorn.run(app, host=settings.host, port=settings.port).</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification: Foundation & Zero-Config Deployment</title>
+        <section>NFR-P1: Startup Time Target</section>
+        <snippet>Server must start and become operational within 3 seconds. Measurement: Time from mailreactor start to first successful /health response. Optimization: lazy imports, no heavy initialization in CLI parsing, FastAPI app created efficiently.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification: Foundation & Zero-Config Deployment</title>
+        <section>NFR-S3: Network Security (localhost default)</section>
+        <snippet>Default binding: 127.0.0.1 (localhost only). Security rationale: Prevent accidental network exposure in MVP. Explicit opt-in for network access: --host 0.0.0.0. Log warning if binding to 0.0.0.0.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/1-3-structured-logging-with-console-and-json-renderers.md</path>
+        <title>Story 1.3: Structured Logging</title>
+        <section>Dev Agent Record - Completion Notes</section>
+        <snippet>Logging system ready: utils/logging.py has configure_logging(json_format, log_level) function. Call this function BEFORE any other initialization. Console: Colored output with key=value format (default). JSON: Machine-parseable for log aggregation (opt-in via --json-logs).</snippet>
+      </doc>
+      <doc>
+        <path>docs/tdd-guide.md</path>
+        <title>TDD Guide</title>
+        <section>Testing Best Practices</section>
+        <snippet>Unit tests for CLI: Test argument parsing with Typer's CliRunner, mock create_app() and uvicorn.run(). Integration tests: Start server in subprocess, verify health endpoint. E2E tests: Invoke mailreactor start as subprocess. Performance tests: Measure startup time, assert &lt;3 seconds.</snippet>
+      </doc>
+      <doc>
+        <path>docs/hc-team-architecture.md</path>
+        <title>Team Working Agreement - Mail Reactor</title>
+        <section>Python Project Root</section>
+        <snippet>Python project root: /home/hcvst/dev/bmad/bmad-mailreactor/mailreactor. Run commands: cd mailreactor && .venv/bin/python or .venv/bin/pytest. Test location: /home/hcvst/dev/bmad/bmad-mailreactor/mailreactor/tests</snippet>
+      </doc>
+    </docs>
+    
+    <code>
+      <file>
+        <path>mailreactor/src/mailreactor/main.py</path>
+        <kind>factory</kind>
+        <symbol>create_app</symbol>
+        <lines>24-123</lines>
+        <reason>FastAPI application factory that CLI will call to initialize app. Must be called by CLI start command to get configured FastAPI instance.</reason>
+      </file>
+      <file>
+        <path>mailreactor/src/mailreactor/config.py</path>
+        <kind>settings</kind>
+        <symbol>Settings</symbol>
+        <lines>21-70</lines>
+        <reason>Pydantic Settings class with host, port, log_level, json_logs fields. CLI must load Settings and override with CLI flags.</reason>
+      </file>
+      <file>
+        <path>mailreactor/src/mailreactor/utils/logging.py</path>
+        <kind>utility</kind>
+        <symbol>configure_logging</symbol>
+        <lines>62-118</lines>
+        <reason>Logging configuration function that must be called FIRST in CLI start command with json_format and log_level parameters from CLI flags.</reason>
+      </file>
+      <file>
+        <path>mailreactor/tests/unit/test_logging.py</path>
+        <kind>test</kind>
+        <symbol>test_configure_logging</symbol>
+        <lines>1-200</lines>
+        <reason>Example of unit tests for logging configuration - follow same pattern for CLI tests with mocking and CliRunner.</reason>
+      </file>
+      <file>
+        <path>mailreactor/tests/integration/test_app_initialization.py</path>
+        <kind>test</kind>
+        <symbol>test_app_initialization</symbol>
+        <lines>1-100</lines>
+        <reason>Example of integration tests for FastAPI app - follow pattern for server startup integration tests.</reason>
+      </file>
+    </code>
+    
+    <dependencies>
+      <python>
+        <package name="typer" version=">=0.20.0" usage="CLI framework - used for @app.command() decorator and argument parsing" />
+        <package name="uvicorn" version="standard" usage="ASGI server - uvicorn.run() called by CLI to start FastAPI app" />
+        <package name="fastapi" version=">=0.122.0" usage="Web framework - create_app() returns FastAPI instance" />
+        <package name="structlog" version="latest" usage="Structured logging - configure_logging() configures structlog" />
+        <package name="pydantic-settings" version="latest" usage="Configuration - Settings class loaded and overridden by CLI flags" />
+      </python>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - MUST call configure_logging() BEFORE any other initialization in CLI start command
+    - MUST override Settings fields with CLI flags (host, port, log_level, json_logs)
+    - MUST use uvicorn.run() (not import string) with FastAPI app instance
+    - MUST bind to localhost (127.0.0.1) by default for security (FR-036)
+    - MUST complete startup in under 3 seconds (NFR-P1)
+    - MUST use Typer @app.command() decorator pattern for commands
+    - MUST handle SIGINT (Ctrl+C) and SIGTERM gracefully for clean shutdown
+    - MUST display startup messages with API URL and docs URL
+    - MUST support both console renderer (default) and JSON renderer (--json-logs flag)
+    - MUST define entry point in pyproject.toml [project.scripts] section
+    - MUST support both mailreactor start and python -m mailreactor start invocations
+    - MUST follow ADR-005 CLI framework pattern (Typer with type hints)
+    - MUST NOT implement --account functionality (placeholder for Epic 2)
+    - MUST use project-relative imports (from mailreactor.config import Settings)
+    - Team constraint: Run tests with cd mailreactor && .venv/bin/pytest
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>create_app</name>
+      <kind>function</kind>
+      <signature>def create_app() -> FastAPI</signature>
+      <path>mailreactor/src/mailreactor/main.py</path>
+      <description>FastAPI application factory - returns configured FastAPI instance. CLI must call this to get app for uvicorn.run().</description>
+    </interface>
+    <interface>
+      <name>configure_logging</name>
+      <kind>function</kind>
+      <signature>def configure_logging(json_format: bool = False, log_level: str = "INFO") -> None</signature>
+      <path>mailreactor/src/mailreactor/utils/logging.py</path>
+      <description>Logging configuration - configures structlog with console or JSON renderer. MUST be called first in CLI start command.</description>
+    </interface>
+    <interface>
+      <name>Settings</name>
+      <kind>class</kind>
+      <signature>class Settings(BaseSettings)</signature>
+      <path>mailreactor/src/mailreactor/config.py</path>
+      <description>Pydantic Settings with host, port, log_level, json_logs fields. CLI must instantiate and override with flags.</description>
+    </interface>
+    <interface>
+      <name>uvicorn.run</name>
+      <kind>function</kind>
+      <signature>uvicorn.run(app: FastAPI, host: str, port: int, log_level: str, reload: bool = False)</signature>
+      <path>external:uvicorn</path>
+      <description>Uvicorn ASGI server entry point - starts server with FastAPI app. Use reload=False for start command, reload=True for dev command (Story 1.8).</description>
+    </interface>
+    <interface>
+      <name>Typer app.command()</name>
+      <kind>decorator</kind>
+      <signature>@app.command()</signature>
+      <path>external:typer</path>
+      <description>Typer command decorator - registers function as CLI command. Use for start() function with typer.Option() for flags.</description>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Unit tests: Use Typer's CliRunner for isolated CLI testing. Mock create_app() and uvicorn.run() to avoid actual startup. Verify Settings object constructed correctly and configure_logging() called with correct parameters.
+      
+      Integration tests: Start server in separate process/thread using subprocess. Wait for health endpoint to respond (httpx.get). Verify startup messages logged. Test graceful shutdown (send SIGINT). Use TestClient for FastAPI testing.
+      
+      End-to-end tests: Invoke mailreactor start as subprocess. Parse stdout/stderr for log messages. Make HTTP request to verify server running. Send SIGINT and verify clean shutdown. Test with different CLI flags.
+      
+      Performance tests: Measure startup time from mailreactor start to first /health 200 OK response. Assert total time less than 3 seconds (NFR-P1). Use pytest-benchmark for repeatable measurements. Test with cold start (clear Python cache).
+      
+      Target coverage: 80%+ for cli/server.py module. Follow patterns from test_logging.py (unit) and test_app_initialization.py (integration).
+    </standards>
+    
+    <locations>
+      - mailreactor/tests/unit/test_cli_server.py (new)
+      - mailreactor/tests/integration/test_server_startup.py (new)
+      - mailreactor/tests/e2e/test_cli_commands.py (new)
+      - mailreactor/tests/performance/test_startup.py (exists - extend for CLI)
+    </locations>
+    
+    <ideas>
+      <test id="AC1" criteria="CLI argument parsing">
+        Unit test: Use CliRunner to invoke start command with various flags (--host, --port, --log-level, --json-logs). Mock uvicorn.run() and assert called with correct parameters. Verify Settings object created with CLI overrides.
+      </test>
+      <test id="AC2" criteria="Logging configuration">
+        Unit test: Mock configure_logging() and assert called with correct json_format and log_level from CLI flags. Verify called BEFORE create_app().
+      </test>
+      <test id="AC3" criteria="Uvicorn server startup">
+        Integration test: Start server in subprocess, wait for /health endpoint to respond (httpx.get with retry). Verify server responds with 200 OK. Test with different ports.
+      </test>
+      <test id="AC4" criteria="Startup messages">
+        Integration test: Capture stdout/stderr from subprocess. Parse logs for server_started, docs_available events. Verify URLs include correct host/port. Test both console and JSON formats.
+      </test>
+      <test id="AC5" criteria="Graceful shutdown">
+        Integration test: Start server in subprocess, send SIGINT signal, verify clean exit (return code 0). Parse logs for server_stopping, server_stopped events.
+      </test>
+      <test id="AC6" criteria="Performance - startup time">
+        Performance test: Measure time from subprocess start to first /health 200 OK. Assert time less than 3000ms. Use pytest-benchmark for baseline tracking. Test cold start scenario.
+      </test>
+      <test id="AC7" criteria="Localhost default binding">
+        Unit test: Invoke start command without --host flag. Verify Settings.host defaults to 127.0.0.1. Security test: Ensure localhost default (NFR-S3).
+      </test>
+      <test id="AC8" criteria="Entry point invocation">
+        E2E test: Test both mailreactor start (console script) and python -m mailreactor start (__main__.py). Verify both methods work and start server.
+      </test>
+      <test id="AC9" criteria="Help text">
+        Unit test: Use CliRunner to invoke mailreactor start --help. Parse output and verify all options documented (--host, --port, --log-level, --json-logs, --account). Verify examples included.
+      </test>
+      <test id="AC10" criteria="CLI flag overrides">
+        Integration test: Set environment variables (MAILREACTOR_HOST=0.0.0.0). Start with CLI flags (--host 127.0.0.1). Verify CLI flags take precedence over env vars.
+      </test>
+    </ideas>
+  </tests>
+</story-context>

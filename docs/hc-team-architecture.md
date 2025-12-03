@@ -25,6 +25,16 @@ As a consequence of the above we have two doc locations:
 
 If a command does not work ASK for help. Do not try and explore alternatives.
 
+### 3rd party library
+Consult the docs of all 3rd party libraries to ensure code is minimal and focused. Do not reinvent the wheel
+and use libraries canonically.
+
+### Focused sharp code
+Keep code and comments focused and sharp, easy to understand and minimal.
+
+### Tests
+Only test functionality that we have added. Do not test Python machinery.
+
 ### Git Operations
 - **NO GIT COMMITS** - HC handles ALL git operations
 - **NO GIT REVERTS** - HC handles version control
