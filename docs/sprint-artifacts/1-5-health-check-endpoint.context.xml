@@ -1,0 +1,233 @@
+<story-context id="bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>1.5</storyId>
+    <title>Health Check Endpoint</title>
+    <status>drafted</status>
+    <generatedAt>2025-12-03</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/1-5-health-check-endpoint.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>developer</asA>
+    <iWant>a `/health` endpoint to verify Mail Reactor is operational</iWant>
+    <soThat>I can monitor system status and validate successful deployment</soThat>
+    <tasks>
+      - Create health check router module (src/mailreactor/api/health.py)
+      - Define health response model (HealthResponse with status, version, uptime, timestamp)
+      - Track application start time (for uptime calculation)
+      - Implement GET /health endpoint (returns HTTP 200 OK)
+      - Register health router in FastAPI app (main.py)
+      - Configure minimal logging for health checks (DEBUG level)
+      - Optimize for performance (response time under 50ms p95 - NFR-P2)
+      - Handle edge cases and errors gracefully (always accessible)
+      - Add OpenAPI documentation for health endpoint
+      - Write comprehensive tests (unit, integration, performance)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    - src/mailreactor/api/health.py provides FastAPI router with GET /health endpoint
+    - Returns HTTP 200 OK when system is healthy
+    - Response includes: {"status": "healthy", "version": "0.1.0", "uptime_seconds": &lt;seconds&gt;}
+    - Calculates uptime from application start time (module-level variable)
+    - Response time under 50ms p95 (NFR-P2)
+    - src/mailreactor/main.py registers the health router via app.include_router()
+    - Health endpoint accessible at http://localhost:8000/health
+    - Health endpoint does NOT require authentication (always accessible for monitoring)
+    - Health check logs as DEBUG level (not INFO) to avoid log noise
+    - Prerequisites: Story 1.4 (server running, FastAPI app factory pattern)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Mail Reactor Architecture</title>
+        <section>API Endpoint Pattern</section>
+        <snippet>Use FastAPI APIRouter for modular endpoint organization. Router pattern: create router instance, define endpoints with @router.get/post decorators, register with app.include_router(). Health endpoint at root level /health (no prefix).</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification: Foundation & Zero-Config Deployment</title>
+        <section>NFR-P2: Health Check Performance</section>
+        <snippet>Health endpoint must respond within 50ms at 95th percentile. Measurement: HTTP request duration from client perspective. Implementation: in-memory uptime calculation, no I/O, no external API calls, no database queries, async FastAPI endpoint.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification: Foundation & Zero-Config Deployment</title>
+        <section>Health Endpoint Design</section>
+        <snippet>Always returns 200 OK when operational. Returns 503 Service Unavailable only during shutdown. Never returns 500 (health is the monitoring canary). No authentication required. Logs at DEBUG level to avoid log flooding.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/1-4-cli-framework-with-start-command.md</path>
+        <title>Story 1.4: CLI Framework with Start Command</title>
+        <section>Dev Agent Record - Completion Notes</section>
+        <snippet>Server startup working: mailreactor start command functional, binds to localhost:8000. FastAPI app created via create_app() in main.py. Health endpoint can now be added to running server. All tests passing (111 tests).</snippet>
+      </doc>
+      <doc>
+        <path>docs/tdd-guide.md</path>
+        <title>TDD Guide</title>
+        <section>Testing Best Practices</section>
+        <snippet>Unit tests: Test Pydantic model validation, test business logic functions. Integration tests: Use FastAPI TestClient (httpx under the hood). Performance tests: Use pytest-benchmark for repeatable measurements, assert p95 latency targets.</snippet>
+      </doc>
+      <doc>
+        <path>docs/hc-team-architecture.md</path>
+        <title>Team Working Agreement - Mail Reactor</title>
+        <section>Python Project Root</section>
+        <snippet>Python project root: /home/hcvst/dev/bmad/bmad-mailreactor/mailreactor. Run commands: cd mailreactor && .venv/bin/python or .venv/bin/pytest. Test location: /home/hcvst/dev/bmad/bmad-mailreactor/mailreactor/tests</snippet>
+      </doc>
+    </docs>
+    
+    <code>
+      <file>
+        <path>mailreactor/src/mailreactor/main.py</path>
+        <kind>factory</kind>
+        <symbol>create_app</symbol>
+        <lines>24-126</lines>
+        <reason>FastAPI application factory where health router must be registered. Use app.include_router(health_router) to mount /health endpoint at root level.</reason>
+      </file>
+      <file>
+        <path>mailreactor/src/mailreactor/config.py</path>
+        <kind>settings</kind>
+        <symbol>Settings</symbol>
+        <lines>1-70</lines>
+        <reason>Pydantic Settings class - can add version field here for health endpoint to read. Alternative: use importlib.metadata.version() or hardcode "0.1.0" for MVP.</reason>
+      </file>
+      <file>
+        <path>mailreactor/src/mailreactor/api/__init__.py</path>
+        <kind>module</kind>
+        <symbol>N/A</symbol>
+        <lines>1-5</lines>
+        <reason>API package init file already exists. Health router will be added as api/health.py module.</reason>
+      </file>
+      <file>
+        <path>mailreactor/tests/integration/test_app_initialization.py</path>
+        <kind>test</kind>
+        <symbol>test_app_initialization</symbol>
+        <lines>1-100</lines>
+        <reason>Example of integration tests for FastAPI app using TestClient - follow same pattern for health endpoint integration tests.</reason>
+      </file>
+    </code>
+    
+    <dependencies>
+      <python>
+        <package name="fastapi" version=">=0.122.0" usage="Web framework - APIRouter for health endpoint, response_model for validation" />
+        <package name="pydantic" version="bundled with fastapi" usage="BaseModel for HealthResponse schema validation" />
+        <package name="structlog" version="latest" usage="Structured logging - logger.debug() for health check requests" />
+        <package name="httpx" version="test dependency" usage="FastAPI TestClient for integration tests (via fastapi.testclient)" />
+        <package name="pytest-benchmark" version="optional" usage="Performance testing - measure p95 latency for health endpoint" />
+      </python>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - MUST return HTTP 200 OK when system is healthy
+    - MUST include status, version, uptime_seconds in response
+    - MUST calculate uptime from module-level start time (_app_start_time)
+    - MUST respond within 50ms at p95 percentile (NFR-P2)
+    - MUST NOT require authentication (monitoring needs unrestricted access)
+    - MUST log at DEBUG level only (avoid log noise from health check polling)
+    - MUST use async def for FastAPI async optimizations
+    - MUST NOT perform I/O operations (no disk, network, database queries)
+    - MUST NOT return 500 errors (health endpoint is the canary)
+    - MUST register router at root level /health (no prefix in include_router)
+    - MUST use Pydantic BaseModel for response validation
+    - MUST add OpenAPI documentation via docstring and response_model
+    - MUST follow FastAPI router pattern (APIRouter instance exported as router)
+    - Team constraint: Run tests with cd mailreactor && .venv/bin/pytest
+    - Team constraint: Only test functionality we added (not Python machinery)
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>create_app</name>
+      <kind>function</kind>
+      <signature>def create_app() -> FastAPI</signature>
+      <path>mailreactor/src/mailreactor/main.py</path>
+      <description>FastAPI application factory - health router must be registered here via app.include_router(health_router) before returning app.</description>
+    </interface>
+    <interface>
+      <name>APIRouter</name>
+      <kind>class</kind>
+      <signature>from fastapi import APIRouter; router = APIRouter()</signature>
+      <path>external:fastapi</path>
+      <description>FastAPI router for modular endpoint organization. Create router instance, define endpoints with @router.get(), export as router.</description>
+    </interface>
+    <interface>
+      <name>BaseModel</name>
+      <kind>class</kind>
+      <signature>from pydantic import BaseModel; class HealthResponse(BaseModel)</signature>
+      <path>external:pydantic</path>
+      <description>Pydantic model for response validation. Define HealthResponse with status, version, uptime_seconds, timestamp fields.</description>
+    </interface>
+    <interface>
+      <name>datetime.utcnow</name>
+      <kind>function</kind>
+      <signature>from datetime import datetime; datetime.utcnow()</signature>
+      <path>stdlib:datetime</path>
+      <description>Get current UTC time for uptime calculation. Set _app_start_time at module load, calculate uptime as (utcnow() - _app_start_time).total_seconds().</description>
+    </interface>
+    <interface>
+      <name>structlog.get_logger</name>
+      <kind>function</kind>
+      <signature>import structlog; logger = structlog.get_logger(__name__)</signature>
+      <path>external:structlog</path>
+      <description>Get structured logger for health module. Use logger.debug() for health check requests to avoid log noise.</description>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Unit tests: Test HealthResponse model validation (Pydantic schema). Test uptime calculation logic by mocking datetime.utcnow. Test version reading (fallback to "0.1.0" if needed). No FastAPI app needed for unit tests.
+      
+      Integration tests: Use FastAPI TestClient for endpoint testing. Test GET /health returns 200 OK. Test response body matches HealthResponse schema (status, version, uptime_seconds, timestamp). Test uptime value is reasonable (>0, increases on subsequent requests). Test endpoint accessible without authentication. Test DEBUG level logging (caplog fixture).
+      
+      Performance tests: Load test with 100 requests to /health endpoint. Measure response times and calculate p95 latency. Assert p95 less than 50ms (NFR-P2). Use pytest-benchmark for repeatable measurements. Test in-memory uptime calculation overhead.
+      
+      Manual tests: Start server with mailreactor start, curl http://localhost:8000/health. Verify response includes all required fields. Check /docs includes health endpoint with correct schema. Verify logs show DEBUG level for health checks. Load test with Apache Bench: ab -n 100 -c 10 http://localhost:8000/health.
+      
+      Target coverage: 80%+ for api/health.py module. Follow patterns from existing tests (test_app_initialization.py for integration).
+    </standards>
+    
+    <locations>
+      - mailreactor/tests/unit/test_health.py (new - model validation, uptime logic)
+      - mailreactor/tests/integration/test_health_endpoint.py (new - GET /health integration)
+      - mailreactor/tests/performance/test_health_latency.py (new - p95 response time)
+    </locations>
+    
+    <ideas>
+      <test id="AC1" criteria="HealthResponse model validation">
+        Unit test: Create HealthResponse instance with valid data. Assert fields populated correctly. Test with missing fields (Pydantic validation error). Test with invalid types (string for uptime_seconds). Verify timestamp is datetime type.
+      </test>
+      <test id="AC2" criteria="Uptime calculation">
+        Unit test: Mock datetime.utcnow to return fixed times. Calculate uptime as (current - start).total_seconds(). Assert uptime matches expected value. Test with different time deltas (1s, 60s, 3600s).
+      </test>
+      <test id="AC3" criteria="GET /health returns 200 OK">
+        Integration test: Use TestClient to GET /health. Assert response.status_code == 200. Verify response.headers["content-type"] == "application/json". Test multiple requests all return 200.
+      </test>
+      <test id="AC4" criteria="Response schema validation">
+        Integration test: GET /health and parse response.json(). Assert "status" in data and data["status"] == "healthy". Assert "version" in data and data["version"] == "0.1.0". Assert "uptime_seconds" in data and data["uptime_seconds"] >= 0. Assert "timestamp" in data.
+      </test>
+      <test id="AC5" criteria="Uptime increases">
+        Integration test: GET /health, record uptime1. Sleep 0.1 seconds. GET /health again, record uptime2. Assert uptime2 > uptime1. Verify uptime delta approximately equals sleep duration.
+      </test>
+      <test id="AC6" criteria="No authentication required">
+        Integration test: GET /health without any auth headers. Assert returns 200 OK. Verify no 401 or 403 errors. Health endpoint must always be accessible for monitoring.
+      </test>
+      <test id="AC7" criteria="DEBUG level logging">
+        Integration test: Use caplog fixture to capture logs. GET /health endpoint. Assert log message "health_check_requested" at DEBUG level. Assert no INFO or WARNING level logs for health checks.
+      </test>
+      <test id="AC8" criteria="Performance - response time p95">
+        Performance test: Send 100 requests to /health using TestClient. Measure response time for each request. Calculate p95 latency (95th percentile). Assert p95 less than 50ms (NFR-P2). Use pytest-benchmark for baseline tracking.
+      </test>
+      <test id="AC9" criteria="Router registration">
+        Integration test: Create app with create_app(). Assert "/health" in [route.path for route in app.routes]. Verify health endpoint registered at root level (no prefix).
+      </test>
+      <test id="AC10" criteria="OpenAPI documentation">
+        Integration test: GET /openapi.json. Parse JSON and assert /health endpoint documented. Verify response schema includes HealthResponse model. Check docstring appears in description field.
+      </test>
+    </ideas>
+  </tests>
+</story-context>
