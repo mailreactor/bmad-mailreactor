@@ -1,0 +1,8 @@
+Process reminder.
+
+- Switch to correct agent 
+- /hc-standard
+- SM *create-story
+- SM *create-story-context
+- DEV *develop-story
+
