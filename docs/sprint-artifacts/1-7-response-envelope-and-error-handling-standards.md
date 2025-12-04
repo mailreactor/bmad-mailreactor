@@ -1,6 +1,6 @@
 # Story 1.7: Response Envelope and Error Handling Standards
 
-Status: drafted
+Status: done
 
 ## Story
 
@@ -642,15 +642,96 @@ docs/sprint-artifacts/1-7-response-envelope-and-error-handling-standards.context
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-3-7-sonnet-20250219
 
 ### Debug Log References
 
+N/A - No issues encountered
+
 ### Completion Notes List
+
+**Implementation Summary (2025-12-04):**
+
+1. **Response Models Created** (`models/responses.py`):
+   - Added `ResponseMeta` with request_id and ISO 8601 UTC timestamp
+   - Added `SuccessResponse[T]` generic envelope with factory method
+   - Added `ErrorDetail` with code, message, optional details
+   - Added `ErrorResponse` standard error envelope
+   - Removed all model docstrings to prevent Swagger UI pollution (per HC feedback)
+   - Used inline comments for developer context instead
+
+2. **Exception Handlers Refactored** (`main.py`):
+   - Refactored `MailReactorException` handler to use `ErrorResponse.model_dump()`
+   - Refactored generic `Exception` handler to use `ErrorResponse.model_dump()`
+   - Added NEW `RequestValidationError` handler with field-specific details
+   - All handlers preserve existing logging and security (no stack traces)
+
+3. **Health Endpoint Updated** (`api/health.py`):
+   - Updated to return `SuccessResponse[HealthResponse]` envelope
+   - Uses existing `RequestIDMiddleware` via `request.state.request_id`
+   - **Timestamp consolidation**: Removed duplicate timestamp from HealthResponse data (per HC feedback)
+   - Timestamp now only in `meta.timestamp` (ISO 8601 UTC format)
+
+4. **Tests Created/Updated**:
+   - Created `tests/unit/test_responses.py` with 10 unit tests
+   - Updated `tests/integration/test_error_handling.py` with 12 tests (added RequestValidationError tests)
+   - Updated `tests/integration/test_health_endpoint.py` with 14 tests (added SuccessResponse envelope tests)
+   - All 131 tests pass, 14 skipped
+
+5. **Documentation Quality Improvements**:
+   - Removed Pydantic model docstrings to prevent broken formatting in Swagger UI
+   - Kept explicit Field descriptions for clean API documentation
+   - Added inline comments for developer context
+   - Clean OpenAPI schema verified (no docstring pollution)
+
+**Key Decisions:**
+- Used Pydantic `ConfigDict` for examples (not deprecated `Config` class)
+- Timestamp only in `meta.timestamp` (removed from HealthResponse to avoid duplication)
+- Model docstrings removed, replaced with inline comments (cleaner Swagger UI)
+- Factory method `SuccessResponse.create()` auto-generates UTC timestamps
+
+**Live Verification:**
+```json
+{
+  "data": {
+    "status": "healthy",
+    "version": "0.1.0",
+    "uptime_seconds": 1.607031
+  },
+  "meta": {
+    "request_id": "c7f349ba-7a00-4261-8350-05ba619b9ca7",
+    "timestamp": "2025-12-04T12:12:29.486166Z"
+  }
+}
+```
 
 ### File List
 
+**Modified:**
+- `mailreactor/src/mailreactor/models/responses.py` - Added 4 new models, removed docstrings from all 5 models
+- `mailreactor/src/mailreactor/main.py` - Refactored 2 handlers, added 1 new handler, imported new models
+- `mailreactor/src/mailreactor/api/health.py` - Updated endpoint to return SuccessResponse envelope
+
+**Created:**
+- `mailreactor/tests/unit/test_responses.py` - 10 unit tests for response models
+
+**Updated:**
+- `mailreactor/tests/integration/test_error_handling.py` - Updated 6 tests, added 2 new tests for RequestValidationError
+- `mailreactor/tests/integration/test_health_endpoint.py` - Updated 8 tests, added 4 new tests for SuccessResponse envelope
+
 ## Change Log
+
+**2025-12-04:** Story 1.7 completed - all acceptance criteria met
+- ✅ Response models defined with Pydantic (ResponseMeta, SuccessResponse[T], ErrorDetail, ErrorResponse)
+- ✅ Exception handlers refactored to use ErrorResponse.model_dump()
+- ✅ RequestValidationError handler added with field-specific details
+- ✅ Health endpoint updated to return SuccessResponse envelope
+- ✅ Timestamp consolidated to meta.timestamp only (removed duplicate from HealthResponse)
+- ✅ Model docstrings removed for clean Swagger UI (replaced with inline comments)
+- ✅ All tests pass (131 passed, 14 skipped)
+- ✅ OpenAPI schema verified clean (no docstring pollution)
+- ✅ Live verification: endpoint returns correct envelope format with ISO 8601 UTC timestamps
+- Status changed from `drafted` to `done`
 
 **2025-12-04:** Story 1.7 updated after HC review - corrected implementation scope
 - **Correction 1:** Request ID middleware already exists at `api/middleware.py` (don't recreate)
