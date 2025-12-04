@@ -1150,6 +1150,134 @@ class TestAccountManagement:
 
 ---
 
+## Development Mode
+
+### Overview
+
+Mail Reactor provides two CLI commands for running the server:
+
+1. **`mailreactor start`** - Production mode (optimized for deployment)
+2. **`mailreactor dev`** - Development mode (optimized for rapid iteration)
+
+### Using Development Mode
+
+Development mode enables auto-reload, which automatically restarts the server when Python source files change. This provides fast feedback during development without manual server restarts.
+
+**Start development server:**
+```bash
+mailreactor dev
+```
+
+**Server output:**
+```
+[WARN]  Development mode active (not for production use)
+[INFO]  Development mode enabled auto_reload=True watch_dir=src/mailreactor
+[INFO]  Mail Reactor started url=http://127.0.0.1:8000
+[INFO]  API documentation available url=http://127.0.0.1:8000/docs
+```
+
+**Edit code and see changes automatically:**
+When you save a Python file in `src/mailreactor/`, the server automatically reloads:
+```
+[INFO]  Reloading due to file change
+[INFO]  Mail Reactor started url=http://127.0.0.1:8000
+```
+
+### Development vs Production Mode
+
+| Feature | `mailreactor dev` | `mailreactor start` |
+|---------|-------------------|---------------------|
+| **Auto-reload** | ✅ Enabled (watches `src/mailreactor/`) | ❌ Disabled |
+| **Default log level** | DEBUG (verbose) | INFO (standard) |
+| **Console logs** | Colored, human-readable | Colored (can use `--json-logs`) |
+| **Performance** | Slower (file watching overhead) | Optimized |
+| **Use case** | Local development | Deployment (VPS, Docker, prod) |
+
+### Development Mode Options
+
+Development mode supports the same CLI flags as production:
+
+```bash
+# Custom port
+mailreactor dev --port 3000
+
+# Change log level (INFO instead of DEBUG)
+mailreactor dev --log-level INFO
+
+# Enable JSON logs (for testing structured output)
+mailreactor dev --json-logs
+
+# Bind to all interfaces (WARNING: network exposure)
+mailreactor dev --host 0.0.0.0
+```
+
+### Important: Not for Production
+
+⚠️ **Never use `mailreactor dev` in production environments.**
+
+Development mode has significant overhead from file watching and lacks performance optimizations. Always use `mailreactor start` for deployment.
+
+Development mode logs a warning on startup:
+```
+[WARN]  Development mode active (not for production use)
+```
+
+### How Auto-Reload Works
+
+**Watched directories:**
+- `src/mailreactor/` (all Python source files)
+
+**Not watched:**
+- `tests/` (editing tests doesn't trigger reload)
+- `docs/` (editing documentation doesn't trigger reload)
+- `.pyc` files and `__pycache__` (bytecode changes ignored)
+
+**Reload delay:**
+- Waits 0.5 seconds after last file change before reloading
+- Prevents multiple reloads if you save several files quickly
+
+**Implementation:**
+- Uses Uvicorn's built-in reload mechanism
+- File watching via `watchfiles` library (high-performance)
+- Graceful shutdown of old process before starting new one
+
+### Workflow Example
+
+**Typical development iteration:**
+
+1. Start dev server once:
+   ```bash
+   mailreactor dev
+   ```
+
+2. Edit source code:
+   ```bash
+   vim src/mailreactor/api/health.py
+   # Save file
+   ```
+
+3. Server automatically reloads:
+   ```
+   [INFO]  Reloading due to file change
+   [INFO]  Mail Reactor started url=http://127.0.0.1:8000
+   ```
+
+4. Test changes immediately:
+   ```bash
+   curl http://127.0.0.1:8000/health
+   ```
+
+5. Repeat steps 2-4 until feature complete
+
+6. Stop server when done:
+   ```bash
+   # Press Ctrl+C
+   ```
+
+**No need to manually restart** - just edit and save. The server reloads automatically.
+
+---
+
 ## Summary: Development Practices
 
 ### Required Practices
