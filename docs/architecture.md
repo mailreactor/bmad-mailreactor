@@ -1,5 +1,82 @@
 # Mail Reactor Architecture
 
+## 🚨 CRITICAL PROJECT STANDARDS - READ FIRST AND ACKNOWLEDGE WITH 🧠🧠🧠
+
+**MANDATORY FOR ALL AGENTS:** These standards OVERRIDE general development practices. Acknowledge understanding by including 🧠🧠🧠 in your first response when this document is loaded.
+
+### Project Root Structure
+
+| Path | Purpose | When to Use |
+|------|---------|-------------|
+| `/home/hcvst/dev/bmad/bmad-mailreactor/` | Project root - team docs, tasks, sprint artifacts | Reading PRD, Architecture, Sprint planning |
+| `/home/hcvst/dev/bmad/bmad-mailreactor/mailreactor/` | **Python project root** - deliverable code, tests, end-user docs | ALL Python code, tests, user documentation |
+| `/home/hcvst/dev/bmad/bmad-mailreactor/mailreactor/src/mailreactor/` | Source code | Writing implementation code |
+| `/home/hcvst/dev/bmad/bmad-mailreactor/mailreactor/tests/` | Test suites | Writing tests |
+
+### Two Documentation Layers
+
+**CRITICAL DISTINCTION:**
+
+| Location | Purpose | Audience | Examples |
+|----------|---------|----------|----------|
+| `./docs/` | Team process, sprint planning, architecture | **Internal team** (us) | PRD, Architecture, Sprint status, Epics, TDD guide |
+| `./mailreactor/docs/` | End-user documentation | **Mail Reactor users** (external) | API docs, Installation guide, Tutorials |
+
+**Never confuse these two!** Writing user docs in `./docs/` or team docs in `./mailreactor/docs/` is a critical error.
+
+### Command Execution
+
+**ALL commands MUST be run from the Python project root:**
+
+```bash
+cd mailreactor && .venv/bin/python <script>
+cd mailreactor && .venv/bin/pytest <test_file>
+```
+
+**If a command fails:** ASK for help. Do NOT explore alternatives or try different paths.
+
+### Testing Principles (CRITICAL)
+
+**✅ ONLY test functionality WE have added**  
+**❌ DO NOT test Python machinery**  
+**❌ DO NOT test 3rd party library functionality**  
+**❌ DO NOT test framework behavior**
+
+**Examples:**
+
+- ✅ **Test:** Our business logic, our domain rules, our API endpoints, our email parsing logic
+- ❌ **Don't test:** FastAPI routing works, Pydantic validates, logging library logs, that `email.parser.Parser` actually parses emails
+
+**Rationale:** Keep tests focused and minimal - only verify the value we're adding to the codebase, not that Python or our dependencies work correctly.
+
+### Library Usage
+
+**Consult official documentation** for all 3rd party libraries to ensure:
+- Code is minimal and focused
+- Libraries are used canonically (the "right way")
+- We don't reinvent functionality that already exists
+
+### Code Quality Standards
+
+- **Sharp, focused code:** Easy to understand, minimal complexity
+- **Clear comments:** Explain WHY, not WHAT
+- **Type hints:** Use Python 3.10+ type annotations throughout
+- **Async-first:** Use `async`/`await` for I/O operations
+
+### Git Operations (CRITICAL)
+
+**🚫 ABSOLUTELY NO GIT OPERATIONS BY AGENTS 🚫**
+
+- **NO `git commit`** - HC handles ALL commits
+- **NO `git revert`** - HC handles version control  
+- **NO `git push`** - HC handles remote operations
+- **NO destructive operations** - No force pushes, no deletions
+- **✅ READ OPERATIONS ONLY** - You can read code with `git diff`, `git log`, `git show`
+
+**If you need git information:** Ask HC or use read-only git commands.
+
+---
+
 ## Executive Summary
 
 Mail Reactor is a self-hosted, open-source headless email client that transforms email integration from weeks to minutes. This architecture document defines the technical decisions that ensure consistent implementation across all development agents and team members.
@@ -420,37 +497,87 @@ except imaplib.IMAP4.error as e:
     raise AuthenticationError(f"IMAP authentication failed: {str(e)}")
 ```
 
-### 3. Logging Pattern
-```python
-# utils/logging.py
-import structlog
-from structlog.stdlib import BoundLogger
+### 3. Logging Pattern (Single Pipeline with Dual Renderers)
 
-def configure_logging():
+**Epic 1 Discovery:** Implemented in Story 1.3, this pattern uses a single internal structlog pipeline with swappable renderers instead of two separate logging systems.
+
+**Pattern Benefits:**
+- No code duplication between console and JSON logging
+- Shared processors (timestamp, log level, sensitive data filtering)
+- Runtime renderer selection via `json_format` parameter
+- Consistent behavior regardless of output format
+
+```python
+# utils/logging.py - Single pipeline, dual renderer pattern
+import structlog
+
+def configure_logging(json_format: bool = False, log_level: str = "INFO") -> None:
+    """Configure structlog with console or JSON renderer.
+    
+    Single pipeline with dual renderers:
+    - Console renderer (default): Human-readable colored output
+    - JSON renderer (opt-in): Machine-readable structured logs
+    """
+    # Shared processors used by both renderers (before renderer)
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+        structlog.processors.StackInfoRenderer(),
+        _filter_sensitive_data,  # Redact passwords, api_keys, etc.
+    ]
+    
+    # Choose renderer based on configuration (the ONLY difference)
+    renderer = (
+        structlog.processors.JSONRenderer()
+        if json_format
+        else structlog.dev.ConsoleRenderer(
+            colors=True,
+            exception_formatter=structlog.dev.rich_traceback,
+        )
+    )
+    
+    # Configure structlog with stdlib integration
     structlog.configure(
         processors=[
-            structlog.stdlib.add_log_level,
-            structlog.stdlib.add_logger_name,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            structlog.processors.JSONRenderer()
+            structlog.stdlib.filter_by_level,
+            *shared_processors,  # Reuse shared processors
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
+        wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
+    
+    # Configure Python's standard logging to use structlog formatting
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=renderer,
+        foreign_pre_chain=shared_processors,
+    )
+    
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(formatter)
+    
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+    root_logger.setLevel(getattr(logging, log_level.upper()))
 
 # Usage throughout application
-logger: BoundLogger = structlog.get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
-# Context binding
-logger = logger.bind(account_id=account_id, folder=folder)
+# Context binding for request tracing
+bind_context(request_id=request_id, account_id=account_id)
 logger.info("fetching_messages", limit=limit)
+clear_context()  # Clean up after request
 
 # Error logging
 logger.error("imap_connection_failed", error=str(e), host=host, port=port)
 ```
+
+**Key Insight:** Renderer selection happens at configuration time, not at every log call. This makes the pattern efficient and eliminates conditional logic throughout the codebase.
 
 ### 4. Configuration Pattern
 ```python
@@ -488,7 +615,179 @@ class Settings(BaseSettings):
 settings = Settings()
 ```
 
-### 5. Testing Pattern
+### 5. Response Envelope Pattern (Generic Success and Error Responses)
+
+**Epic 1 Discovery:** Implemented in Story 1.7, this pattern wraps all API responses in consistent envelopes with metadata for tracing and debugging.
+
+**Pattern Benefits:**
+- Consistent response structure across all endpoints
+- Generic `SuccessResponse[T]` provides type safety
+- Request ID for distributed tracing
+- Timestamp for debugging and logging
+- Clear separation between data and metadata
+
+```python
+# models/responses.py - Generic success envelope
+from datetime import datetime, timezone
+from typing import Generic, TypeVar
+from pydantic import BaseModel, Field
+
+T = TypeVar("T")
+
+class ResponseMeta(BaseModel):
+    """Metadata included in every response."""
+    request_id: str = Field(..., description="Unique request identifier for tracing")
+    timestamp: datetime = Field(..., description="Response timestamp in UTC (ISO 8601)")
+
+class SuccessResponse(BaseModel, Generic[T]):
+    """Generic success envelope wrapping all successful responses."""
+    data: T = Field(..., description="Response data")
+    meta: ResponseMeta = Field(..., description="Response metadata")
+    
+    @classmethod
+    def create(cls, data: T, request_id: str) -> "SuccessResponse[T]":
+        """Factory method to create success response with current timestamp."""
+        return cls(
+            data=data,
+            meta=ResponseMeta(
+                request_id=request_id, 
+                timestamp=datetime.now(timezone.utc)
+            ),
+        )
+
+class ErrorDetail(BaseModel):
+    """Error structure with code, message, and optional details."""
+    code: str = Field(..., description="Machine-readable error code")
+    message: str = Field(..., description="Human-readable error message")
+    details: dict[str, Any] | None = Field(None, description="Additional error context")
+
+class ErrorResponse(BaseModel):
+    """Standard error envelope for all error responses."""
+    error: ErrorDetail = Field(..., description="Error details")
+    meta: ResponseMeta = Field(..., description="Response metadata")
+
+# Usage in API endpoints
+from fastapi import APIRouter, Request
+
+router = APIRouter()
+
+@router.get("/health", response_model=SuccessResponse[HealthResponse])
+async def health_check(request: Request):
+    """Health check endpoint using response envelope."""
+    health_data = HealthResponse(
+        status="healthy",
+        version="0.1.0",
+        uptime_seconds=123.45
+    )
+    return SuccessResponse.create(
+        data=health_data, 
+        request_id=request.state.request_id  # From middleware
+    )
+
+# Error handling with envelope
+from fastapi import HTTPException
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Convert HTTPException to ErrorResponse envelope."""
+    error_response = ErrorResponse(
+        error=ErrorDetail(
+            code=f"HTTP_{exc.status_code}",
+            message=exc.detail,
+            details=None
+        ),
+        meta=ResponseMeta(
+            request_id=request.state.request_id,
+            timestamp=datetime.now(timezone.utc)
+        )
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_response.model_dump()
+    )
+```
+
+**Key Insight:** Using Pydantic's `Generic[T]` allows `SuccessResponse[HealthResponse]` to provide full type safety and auto-generate accurate OpenAPI schemas. The `request_id` from middleware creates end-to-end request tracing.
+
+### 6. Development Mode Pattern (Dual CLI Commands)
+
+**Epic 1 Discovery:** Implemented in Story 1.8, separate `start` and `dev` commands optimize for production vs development workflows.
+
+**Pattern Benefits:**
+- Clear separation between production and development environments
+- Different defaults for each mode (log level, reload, log format)
+- No "magic" environment detection - explicit command choice
+- Prevents accidentally running dev mode in production
+
+```python
+# cli/server.py - Dual command pattern
+import typer
+import uvicorn
+
+app = typer.Typer()
+
+@app.command()
+def start(
+    host: str = "0.0.0.0",
+    port: int = 8000,
+    log_level: str = "INFO",
+    json_logs: bool = True,  # Production default: JSON
+):
+    """Start Mail Reactor in production mode.
+    
+    - Optimized for production deployment
+    - JSON logs by default (for log aggregators)
+    - No auto-reload (stability over convenience)
+    """
+    configure_logging(json_format=json_logs, log_level=log_level)
+    logger.info("mail_reactor_starting", mode="production", host=host, port=port)
+    
+    uvicorn.run(
+        "mailreactor.main:app",
+        host=host,
+        port=port,
+        log_config=None,  # Use structlog configuration
+        reload=False,  # No auto-reload in production
+    )
+
+@app.command()
+def dev(
+    host: str = "127.0.0.1",  # Localhost only
+    port: int = 8000,
+    log_level: str = "DEBUG",  # Development default: DEBUG
+    json_logs: bool = False,  # Development default: console
+):
+    """Start Mail Reactor in development mode with auto-reload.
+    
+    - Optimized for development workflow
+    - Console logs by default (human-readable)
+    - Auto-reload on file changes
+    - Debug log level for detailed output
+    """
+    configure_logging(json_format=json_logs, log_level=log_level)
+    logger.warning("development_mode_active", warning="Not for production use")
+    logger.info(
+        "mail_reactor_starting",
+        mode="development",
+        auto_reload=True,
+        watch_dir="src/mailreactor"
+    )
+    
+    uvicorn.run(
+        "mailreactor.main:app",
+        host=host,
+        port=port,
+        log_config=None,
+        reload=True,  # Auto-reload on file changes
+        reload_dirs=["src/mailreactor"],  # Watch only source code
+        reload_delay=0.5,  # Half-second debounce
+    )
+```
+
+**Key Insight:** Separate commands with different defaults eliminate the need for environment variables or complex configuration. Developers explicitly choose the mode they want. The `dev` command binds to `127.0.0.1` by default to prevent accidental external exposure during development.
+
+### 7. Testing Pattern
 ```python
 # tests/test_api/test_messages.py
 import pytest
