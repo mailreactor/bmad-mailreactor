@@ -638,7 +638,7 @@ def test_request_id_in_response_meta():
 
 ### Context Reference
 
-<!-- Path(s) to story context XML will be added here by context workflow -->
+docs/sprint-artifacts/1-7-response-envelope-and-error-handling-standards.context.xml
 
 ### Agent Model Used
 

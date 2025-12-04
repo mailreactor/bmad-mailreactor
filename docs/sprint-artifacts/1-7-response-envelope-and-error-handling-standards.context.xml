@@ -1,0 +1,340 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>7</storyId>
+    <title>Response Envelope and Error Handling Standards</title>
+    <status>drafted</status>
+    <generatedAt>2025-12-04</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/1-7-response-envelope-and-error-handling-standards.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a developer</asA>
+    <iWant>consistent API response formats and error handling</iWant>
+    <soThat>client applications can reliably parse responses and handle errors gracefully</soThat>
+    <tasks>
+- [ ] Define response models in `models/responses.py` (AC: SuccessResponse, ErrorResponse)
+  - [ ] Create `ErrorDetail` model with `code`, `message`, `details` fields
+  - [ ] Create `ErrorResponse` model with `error: ErrorDetail` field
+  - [ ] Create generic `SuccessResponse[T]` with `data: T` and `meta` fields
+  - [ ] Create `ResponseMeta` model with `request_id` and `timestamp` (ISO 8601 UTC)
+  - [ ] Add Pydantic examples to all models for OpenAPI docs
+
+- [ ] Refactor existing exception handlers in `main.py` to use Pydantic models (AC: convert to standard responses)
+  - [ ] Refactor `MailReactorException` handler (lines 96-123) to use `ErrorResponse.model_dump()`
+  - [ ] Refactor generic `Exception` handler (lines 125-150) to use `ErrorResponse.model_dump()`
+  - [ ] Add NEW handler for `RequestValidationError` → HTTP 400 + field details in `ErrorDetail.details`
+  - [ ] Verify all handlers still log full context before converting to response
+  - [ ] Verify no stack traces in response content (already implemented)
+
+- [ ] Update health endpoint to use SuccessResponse envelope (AC: consistent format)
+  - [ ] Modify `api/health.py` to return `SuccessResponse[HealthResponse]`
+  - [ ] Access `request_id` from existing middleware: `request.state.request_id`
+  - [ ] Use `SuccessResponse.create()` factory method with request_id
+  - [ ] Update `response_model` in route decorator to `SuccessResponse[HealthResponse]`
+  - [ ] Verify OpenAPI spec shows new envelope format with `data` and `meta` fields
+
+- [ ] Write unit tests for new response models (AC: models validated)
+  - [ ] Test `ErrorResponse` and `ErrorDetail` serialization
+  - [ ] Test `SuccessResponse[T]` generic type handling with `HealthResponse`
+  - [ ] Test `ResponseMeta` timestamp format (ISO 8601 with UTC)
+  - [ ] Test Pydantic examples render correctly in OpenAPI spec
+
+- [ ] Update existing integration tests for exception handling (AC: handlers use Pydantic models)
+  - [ ] Update `test_error_handling.py` to verify Pydantic model structure (tests already pass)
+  - [ ] Add test for new `RequestValidationError` handler with field details
+  - [ ] Verify existing tests still pass after Pydantic model refactor
+  - [ ] Add test for `ErrorDetail.details` field (validation errors)
+
+- [ ] Add integration tests for SuccessResponse envelope (AC: consistent format)
+  - [ ] Test health endpoint returns `SuccessResponse` envelope with `data` and `meta`
+  - [ ] Test `meta.request_id` matches `X-Request-ID` header (from existing middleware)
+  - [ ] Test `meta.timestamp` is ISO 8601 UTC format
+  - [ ] Verify request_id unique per request (existing middleware behavior)
+</tasks>
+  </story>
+
+  <acceptanceCriteria>
+**Given** the FastAPI application from previous stories  
+**When** implementing response standards  
+**Then** `src/mailreactor/models/responses.py` defines:
+- `SuccessResponse[T]` generic model: `{"data": T, "meta": {"request_id": str, "timestamp": str}}`
+- `ErrorResponse` model: `{"detail": str, "error_code": str, "request_id": str}`
+- Meta includes ISO 8601 UTC timestamp (FR-059)
+- Request ID generated per request for tracing
+
+**And** FastAPI exception handlers in `main.py` convert:
+- `MailReactorException` → HTTP status + `ErrorResponse`
+- Generic `Exception` → HTTP 500 + generic error message (no stack trace in production)
+- Validation errors → HTTP 400 + field-specific details
+
+**And** All API endpoints use standard HTTP status codes:
+- 200 OK: Successful GET/operation
+- 201 Created: Successful POST creating resource
+- 400 Bad Request: Invalid input
+- 401 Unauthorized: Missing/invalid authentication
+- 404 Not Found: Resource not found
+- 500 Internal Server Error: Unexpected errors
+
+**And** Error responses never expose:
+- Stack traces (production mode)
+- Sensitive data (passwords, API keys)
+- Internal system paths or implementation details
+
+**And** All timestamps use ISO 8601 format with UTC timezone (e.g., `2025-11-25T10:00:00Z`)
+
+**And** Request ID middleware injects unique `request_id` into structlog context and response headers
+
+**Prerequisites:** Story 1.2 (exception hierarchy), Story 1.5 (health endpoint to test)
+</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/prd.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR-055 through FR-059: API Response Standards</section>
+        <snippet>FR-055: JSON content type, FR-056: Consistent response envelope format, FR-057: Standard HTTP status codes, FR-058: Error detail structure with code/message/details, FR-059: ISO 8601 timestamps with UTC timezone</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>System Architecture</title>
+        <section>Error Handling Pattern</section>
+        <snippet>Exception hierarchy with MailReactorException base class, FastAPI exception handlers convert to standard error responses, never expose stack traces in production, log full context server-side</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic 1 Technical Specification</title>
+        <section>Data Models and Contracts</section>
+        <snippet>ErrorDetail model (code, message, details), ErrorResponse envelope, SuccessResponse[T] generic wrapper with data and meta fields, ResponseMeta (request_id, timestamp), Pydantic examples for OpenAPI docs</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/1-6-openapi-documentation-auto-generation.md</path>
+        <title>Story 1.6: OpenAPI Documentation</title>
+        <section>Dev Notes - Learnings</section>
+        <snippet>Minimal contextual documentation approach established, inline content preferred over external files, FastAPI app factory pattern in use, OpenAPI spec metadata fully configured</snippet>
+      </doc>
+      <doc>
+        <path>docs/hc-standards.md</path>
+        <title>Team Working Agreement</title>
+        <section>Testing Principle</section>
+        <snippet>ONLY test functionality WE have added. Do NOT test Python machinery, 3rd party libraries, or framework behavior. Test our business logic, domain rules, API endpoints - not that FastAPI routing works or Pydantic validates</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>mailreactor/src/mailreactor/models/responses.py</path>
+        <kind>model</kind>
+        <symbol>HealthResponse</symbol>
+        <lines>1-45</lines>
+        <reason>Existing response model that will be wrapped in SuccessResponse[T] envelope. Story 1.7 adds ErrorResponse, ErrorDetail, SuccessResponse[T], ResponseMeta to this file</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor/src/mailreactor/main.py</path>
+        <kind>exception_handler</kind>
+        <symbol>mailreactor_exception_handler</symbol>
+        <lines>96-123</lines>
+        <reason>Existing handler that returns inline dict. Story 1.7 refactors to use ErrorResponse.model_dump()</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor/src/mailreactor/main.py</path>
+        <kind>exception_handler</kind>
+        <symbol>generic_exception_handler</symbol>
+        <lines>125-150</lines>
+        <reason>Existing handler that returns inline dict. Story 1.7 refactors to use ErrorResponse.model_dump()</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor/src/mailreactor/api/health.py</path>
+        <kind>endpoint</kind>
+        <symbol>get_health</symbol>
+        <lines>28-47</lines>
+        <reason>Existing health endpoint that returns HealthResponse directly. Story 1.7 wraps in SuccessResponse envelope and adds Request parameter to access request_id from middleware</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor/src/mailreactor/api/middleware.py</path>
+        <kind>middleware</kind>
+        <symbol>RequestIDMiddleware</symbol>
+        <lines>21-86</lines>
+        <reason>Existing middleware that generates request_id and stores in request.state.request_id. Story 1.7 uses this to populate response meta field</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor/src/mailreactor/exceptions.py</path>
+        <kind>exception_hierarchy</kind>
+        <symbol>MailReactorException</symbol>
+        <lines>1-127</lines>
+        <reason>Existing exception hierarchy with status code mapping. Story 1.7 handlers convert these to ErrorResponse Pydantic models</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor/tests/integration/test_error_handling.py</path>
+        <kind>test</kind>
+        <symbol>TestMailReactorExceptionHandler</symbol>
+        <lines>1-232</lines>
+        <reason>Existing integration tests that verify error response structure. Story 1.7 updates these to verify Pydantic model structure and adds test for RequestValidationError handler</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <python>
+        <package name="fastapi" version=">=0.122.0">Web framework with automatic validation, OpenAPI generation, exception handling</package>
+        <package name="pydantic" version=">=2.0.0">Data validation and serialization for response models, generic types, examples</package>
+        <package name="pydantic-settings" version="latest">Environment-based configuration (already in use)</package>
+        <package name="structlog" version="latest">Structured logging for error context (already configured)</package>
+        <package name="uvicorn[standard]" version="latest">ASGI server (already in use)</package>
+      </python>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+**Architecture Patterns:**
+- Exception hierarchy: All custom exceptions inherit from MailReactorException with status_code attribute
+- FastAPI exception handlers: Convert exceptions to JSON responses using .model_dump() for JSONResponse.content
+- Middleware pattern: RequestIDMiddleware already generates UUID per request and stores in request.state.request_id
+- Pydantic models: Use Field() with description and examples for OpenAPI doc generation
+- Generic types: SuccessResponse[T] uses TypeVar for type-safe data wrapping
+
+**Error Handling Rules:**
+- Never expose stack traces in API responses (log server-side only)
+- Never log sensitive data (passwords, API keys, tokens)
+- Generic message for 500 errors: "An unexpected error occurred"
+- Log full exception context with exc_info=True before converting to response
+- HTTP status code from exception.status_code attribute
+
+**Response Format Standards:**
+- Success: {"data": T, "meta": {"request_id": str, "timestamp": str}}
+- Error: {"error": {"code": str, "message": str, "details": dict | null}}
+- All timestamps: ISO 8601 UTC format (e.g., "2025-12-04T10:30:45Z")
+- request_id: UUID4 format, matches X-Request-ID header
+
+**Testing Constraints:**
+- ONLY test functionality WE have added (no testing Python, FastAPI, Pydantic internals)
+- Test our response models serialize correctly (not that Pydantic works)
+- Test our exception handlers convert to correct responses (not that FastAPI routes)
+- Test our request_id middleware generates unique IDs (not that uuid.uuid4() works)
+
+**Code Style:**
+- Type hints on all functions and models
+- Docstrings with Args/Returns/Examples sections
+- Pydantic ConfigDict for examples (not deprecated Config class)
+- Use datetime.now(timezone.utc) not datetime.utcnow() (deprecated)
+</constraints>
+
+  <interfaces>
+**Pydantic Response Models (Story 1.7 Creates):**
+
+```python
+# models/responses.py
+
+class ResponseMeta(BaseModel):
+    """Metadata included in all API responses"""
+    request_id: str = Field(description="Unique request identifier", example="550e8400-e29b-41d4-a716-446655440000")
+    timestamp: datetime = Field(description="Response timestamp UTC ISO 8601", example="2025-12-04T10:30:45Z")
+
+class SuccessResponse(BaseModel, Generic[T]):
+    """Standard success response envelope"""
+    data: T = Field(description="Response data")
+    meta: ResponseMeta = Field(description="Response metadata")
+    
+    @classmethod
+    def create(cls, data: T, request_id: str):
+        """Factory method to create success response with current timestamp"""
+        return cls(data=data, meta=ResponseMeta(request_id=request_id, timestamp=datetime.now(timezone.utc)))
+
+class ErrorDetail(BaseModel):
+    """Error detail structure"""
+    code: str = Field(description="Machine-readable error code", example="ACCOUNT_NOT_FOUND")
+    message: str = Field(description="Human-readable error message", example="Account acc_123 not found")
+    details: Optional[Dict[str, Any]] = Field(default=None, description="Additional error context")
+
+class ErrorResponse(BaseModel):
+    """Standard error response envelope"""
+    error: ErrorDetail = Field(description="Error details")
+```
+
+**FastAPI Exception Handler Pattern (Story 1.7 Refactors):**
+
+```python
+# main.py - BEFORE (inline dict)
+return JSONResponse(status_code=exc.status_code, content={"error": {"code": "...", "message": "..."}})
+
+# main.py - AFTER (Pydantic model)
+return JSONResponse(status_code=exc.status_code, content=ErrorResponse(error=ErrorDetail(code="...", message="...")).model_dump())
+```
+
+**Health Endpoint Pattern (Story 1.7 Updates):**
+
+```python
+# api/health.py - BEFORE
+@router.get("/health", response_model=HealthResponse)
+async def get_health() -> HealthResponse:
+    return HealthResponse(...)
+
+# api/health.py - AFTER
+@router.get("/health", response_model=SuccessResponse[HealthResponse])
+async def get_health(request: Request) -> SuccessResponse[HealthResponse]:
+    health_data = HealthResponse(...)
+    request_id = request.state.request_id  # From existing middleware
+    return SuccessResponse.create(data=health_data, request_id=request_id)
+```
+
+**Middleware Interface (Already Exists):**
+
+```python
+# api/middleware.py - RequestIDMiddleware
+request.state.request_id: str  # UUID4 generated per request
+response.headers["X-Request-ID"]: str  # Same UUID in response header
+```
+</interfaces>
+
+  <tests>
+    <standards>
+**Testing Philosophy (from hc-standards.md):**
+- ONLY test functionality WE have added
+- Do NOT test Python machinery, 3rd party libraries, or framework behavior
+- Test our business logic, domain rules, API endpoints
+- Do NOT test that FastAPI routing works or Pydantic validates
+
+**Test Structure:**
+- Unit tests: Response model serialization, factory methods, field validation
+- Integration tests: Exception handlers return correct responses, health endpoint envelope format
+- Focus: Verify OUR models serialize correctly, OUR handlers convert exceptions properly
+
+**Tools:**
+- pytest with pytest-asyncio for async endpoint tests
+- FastAPI TestClient for integration tests
+- httpx for HTTP client simulation
+
+**Coverage:**
+- Target: >90% for new response models
+- Verify: All error scenarios (MailReactorException, generic Exception, RequestValidationError)
+- Verify: Success envelope format with health endpoint
+</standards>
+    <locations>
+mailreactor/tests/unit/test_responses.py (NEW - test response models)
+mailreactor/tests/integration/test_error_handling.py (UPDATE - verify Pydantic models)
+mailreactor/tests/integration/test_health_endpoint.py (UPDATE - verify envelope format)
+mailreactor/tests/integration/test_request_id.py (NEW - verify request_id in meta)
+</locations>
+    <ideas>
+**Unit Test Ideas:**
+- test_error_detail_serialization: Verify ErrorDetail with code/message/details serializes to correct JSON
+- test_error_response_serialization: Verify ErrorResponse with nested ErrorDetail structure
+- test_success_response_generic_type: Verify SuccessResponse[HealthResponse] preserves generic type
+- test_response_meta_timestamp_format: Verify timestamp is ISO 8601 UTC format
+- test_success_response_create_factory: Verify factory method generates current timestamp
+- test_pydantic_examples: Verify model_config examples render in schema
+
+**Integration Test Ideas (AC-specific):**
+- test_mailreactor_exception_uses_pydantic_model: Verify response structure matches ErrorResponse schema
+- test_generic_exception_uses_pydantic_model: Verify 500 error uses ErrorResponse.model_dump()
+- test_request_validation_error_handler: NEW - Verify FastAPI validation errors return ErrorResponse with field details
+- test_health_endpoint_success_envelope: Verify health returns SuccessResponse with data and meta
+- test_request_id_in_meta_matches_header: Verify meta.request_id equals X-Request-ID header
+- test_timestamp_is_iso_8601_utc: Verify meta.timestamp format
+
+**Edge Cases:**
+- test_error_detail_with_null_details: Verify details=None serializes correctly
+- test_nested_validation_errors: Verify complex Pydantic validation errors in details field
+- test_concurrent_requests_unique_ids: Verify different requests get different request_ids
+</ideas>
+  </tests>
+</story-context>
