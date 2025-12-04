@@ -45,7 +45,7 @@ development_status:
   1-3-structured-logging-with-console-and-json-renderers: done  # Code review: A+ (2025-12-03)
   1-4-cli-framework-with-start-command: done  # Completed: 2025-12-03, Tests: 111 passed
   1-5-health-check-endpoint: done  # Code review: APPROVED (2025-12-03), Tests: 114 passed (15 new), Coverage: 100% health.py/responses.py, NFR-P2 satisfied
-  1-6-openapi-documentation-auto-generation: ready-for-dev  # Validated by SM (2025-12-04), implementation ~40% complete - needs metadata
+  1-6-openapi-documentation-auto-generation: done  # Completed (2025-12-04), contextual docs approach established
   1-7-response-envelope-and-error-handling-standards: backlog
   1-8-development-mode-with-hot-reload: backlog
   epic-1-retrospective: optional
