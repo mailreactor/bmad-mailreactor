@@ -1,6 +1,6 @@
 # Story 1.6: OpenAPI Documentation Auto-Generation
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
