@@ -1,0 +1,392 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>1</storyId>
+    <title>Provider Configuration and Basic Auto-Detection</title>
+    <status>drafted</status>
+    <generatedAt>2025-12-05</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/2-1-provider-configuration-and-basic-auto-detection.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>developer</asA>
+    <iWant>Mail Reactor to auto-detect IMAP/SMTP settings for major email providers</iWant>
+    <soThat>I don't have to manually look up server configurations</soThat>
+    <tasks>
+- Create provider configuration file (providers.yaml with 4+ major providers)
+- Create account Pydantic models (ProviderConfig, IMAPConfig, SMTPConfig, AccountCredentials)
+- Implement provider detector (detect_provider function, domain extraction)
+- Add structured logging for provider detection
+- Write unit tests for provider detection (test all major providers, unknown domains)
+- Write integration test for end-to-end provider detection
+</tasks>
+  </story>
+
+  <acceptanceCriteria>
+AC1: providers.yaml contains Gmail, Outlook, Yahoo, iCloud configurations with imap/smtp settings
+AC2: provider_detector.py provides detect_provider(email) function returning ProviderConfig or None
+AC3: Domain extraction handles gmail.com, outlook.com, hotmail.com aliases
+AC4: account.py defines ProviderConfig, IMAPConfig, SMTPConfig, AccountCredentials models
+AC5: Structured logging for detection attempts, success, and failure
+AC6: Unit tests cover all major providers and unknown domains with 100% coverage
+AC7: Integration test verifies YAML load → detect → return config flow
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+<!-- Tech Spec Epic 2 -->
+<doc>
+  <path>docs/sprint-artifacts/tech-spec-epic-2.md</path>
+  <title>Epic Technical Specification: Email Account Connection</title>
+  <section>AC-2.1: Local Provider Auto-Detection</section>
+  <snippet>Auto-detection for major providers (Gmail, Outlook, Yahoo, iCloud) via local YAML configuration. Detection strategy: extract domain from email, look up in providers.yaml, return ProviderConfig. Provider aliases map common variations (googlemail.com → gmail, hotmail.com → outlook).</snippet>
+</doc>
+
+<doc>
+  <path>docs/sprint-artifacts/tech-spec-epic-2.md</path>
+  <title>Epic Technical Specification: Email Account Connection</title>
+  <section>Data Models - ProviderConfig, IMAPConfig, SMTPConfig, AccountCredentials</section>
+  <snippet>Separate IMAP/SMTP credentials model reality - credentials CAN differ for relay services, shared mailboxes. ProviderConfig contains auto-detected server settings. IMAPConfig/SMTPConfig contain host, port, ssl/starttls, username, password (exclude=True). AccountCredentials combines email, imap, smtp with account_id and connection_status.</snippet>
+</doc>
+
+<doc>
+  <path>docs/sprint-artifacts/tech-spec-epic-2.md</path>
+  <title>Epic Technical Specification: Email Account Connection</title>
+  <section>Package Structure - Dual-Mode Architecture</section>
+  <snippet>Core modules (core/provider_detector.py) have zero FastAPI dependencies for library mode support. Models split into domain models (models/account.py) for both modes and API schemas (api/schemas.py) for FastAPI-only usage.</snippet>
+</doc>
+
+<!-- Architecture -->
+<doc>
+  <path>docs/architecture.md</path>
+  <title>Mail Reactor Architecture</title>
+  <section>Provider Auto-Detection</section>
+  <snippet>YAML-based provider configuration in utils/providers.yaml. Structure: provider key → imap/smtp sections with host, port, ssl/starttls. Detection: extract domain from email, lookup in YAML, handle aliases. Return ProviderConfig or None for unknown providers.</snippet>
+</doc>
+
+<doc>
+  <path>docs/architecture.md</path>
+  <title>Mail Reactor Architecture</title>
+  <section>Data Validation - Pydantic</section>
+  <snippet>All data models use Pydantic for validation. Password fields marked with Field(exclude=True) to prevent serialization. EmailStr for email validation. Model pattern: inherit BaseModel, use type hints, add docstrings for OpenAPI.</snippet>
+</doc>
+
+<doc>
+  <path>docs/architecture.md</path>
+  <title>Mail Reactor Architecture</title>
+  <section>Testing Principles</section>
+  <snippet>CRITICAL: Only test functionality WE have added. Do NOT test Python machinery, 3rd party libraries, or framework behavior. Test our business logic, domain rules, parsing logic - not that libraries work correctly.</snippet>
+</doc>
+
+<!-- PRD -->
+<doc>
+  <path>docs/prd.md</path>
+  <title>Mail Reactor - Product Requirements Document</title>
+  <section>MVP - Zero-Configuration Account Connection</section>
+  <snippet>Auto-detect IMAP/SMTP servers for major providers (Gmail, Outlook, Yahoo). Single account support. App passwords for MVP. Provider configuration via JSON/YAML config covering Gmail/Outlook/Yahoo/iCloud/custom.</snippet>
+</doc>
+    </docs>
+
+    <code>
+<!-- Existing models for reference -->
+<artifact>
+  <path>mailreactor/src/mailreactor/models/responses.py</path>
+  <kind>module</kind>
+  <symbol>HealthResponse, SuccessResponse, ErrorResponse, ResponseMeta</symbol>
+  <lines>1-121</lines>
+  <reason>Reference for Pydantic model patterns - Field usage, docstrings, ConfigDict, Generic types, factory methods</reason>
+</artifact>
+
+<!-- Core structure exists but no provider detection yet -->
+<artifact>
+  <path>mailreactor/src/mailreactor/core/</path>
+  <kind>directory</kind>
+  <symbol>__init__.py, imap_client.py, smtp_client.py, events.py</symbol>
+  <lines>N/A</lines>
+  <reason>Core module structure exists - NEW FILE: provider_detector.py will be added here</reason>
+</artifact>
+
+<!-- Models directory exists but no account models yet -->
+<artifact>
+  <path>mailreactor/src/mailreactor/models/</path>
+  <kind>directory</kind>
+  <symbol>__init__.py, responses.py</symbol>
+  <lines>N/A</lines>
+  <reason>Models directory exists - NEW FILE: account.py will be added here</reason>
+</artifact>
+
+<!-- Utils structure for providers.yaml -->
+<artifact>
+  <path>mailreactor/src/mailreactor/utils/</path>
+  <kind>directory</kind>
+  <symbol>__init__.py, logging.py, version.py</symbol>
+  <lines>N/A</lines>
+  <reason>Utils directory exists - NEW FILE: providers.yaml will be added here</reason>
+</artifact>
+    </code>
+
+    <dependencies>
+<!-- From pyproject.toml -->
+<ecosystem name="python">
+  <package name="pydantic" version=">=2.0.0">Data validation for models</package>
+  <package name="imapclient" version=">=3.0.0">IMAP client (not used in this story, but relevant for future connection validation)</package>
+  <package name="aiosmtplib" version=">=3.0.0">SMTP client (not used in this story, but relevant for future connection validation)</package>
+  <package name="structlog">Structured logging for provider detection events</package>
+  <package name="pyyaml">YAML parsing for providers.yaml (ADD TO DEPENDENCIES if not present)</package>
+</ecosystem>
+
+<note>Story 2.1 requires PyYAML for providers.yaml parsing. Verify it's in pyproject.toml dependencies, add if missing.</note>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+1. Framework-agnostic core: Zero FastAPI imports in core/provider_detector.py (library mode requirement from tech spec)
+2. Password security: Use Field(exclude=True) on password fields in all models (never serialize)
+3. Testing: ONLY test functionality WE add - don't test Pydantic validation, PyYAML parsing, or Python standard lib
+4. DRY principle: Extract shared YAML loading logic if repeated (learned from Story 1-8)
+5. Module organization: Keep provider detection in core/, models in models/, config in utils/
+6. Documentation: Add docstrings to all public functions for OpenAPI generation
+7. Logging: Use structlog with structured context (email, domain, provider)
+8. Case sensitivity: Always lowercase domain before lookup to handle User@Gmail.COM
+9. Error handling: Return None for unknown providers (graceful), don't raise exceptions
+10. YAML loading: Load once at module import, cache in module-level variable
+  </constraints>
+
+  <interfaces>
+<!-- Provider Detection Interface -->
+<interface>
+  <name>detect_provider(email: str) -> Optional[ProviderConfig]</name>
+  <kind>function</kind>
+  <signature>
+async def detect_provider(email: str) -> Optional[ProviderConfig]:
+    """
+    Auto-detect IMAP/SMTP settings for email provider.
+    
+    Args:
+        email: Email address (e.g., user@gmail.com)
+        
+    Returns:
+        ProviderConfig with IMAP/SMTP settings if found, None if unknown provider
+        
+    Raises:
+        ValidationError: If email format is invalid
+    """
+  </signature>
+  <path>mailreactor/src/mailreactor/core/provider_detector.py</path>
+</interface>
+
+<interface>
+  <name>load_providers() -> Dict[str, ProviderConfig]</name>
+  <kind>function</kind>
+  <signature>
+def load_providers() -> Dict[str, ProviderConfig]:
+    """
+    Load provider configurations from YAML file.
+    
+    Returns:
+        Dict mapping provider keys to ProviderConfig instances
+        
+    Implementation:
+        - Uses module-level cache (_PROVIDERS_CACHE)
+        - Loads from utils/providers.yaml
+        - Parses YAML into Pydantic models
+        - Called once at module import
+    """
+  </signature>
+  <path>mailreactor/src/mailreactor/core/provider_detector.py</path>
+</interface>
+
+<interface>
+  <name>extract_domain(email: str) -> str</name>
+  <kind>function</kind>
+  <signature>
+def extract_domain(email: str) -> str:
+    """
+    Extract and normalize domain from email address.
+    
+    Args:
+        email: Email address (e.g., User@Gmail.COM)
+        
+    Returns:
+        Lowercase domain (e.g., gmail.com)
+        
+    Raises:
+        ValueError: If email format is invalid
+    """
+  </signature>
+  <path>mailreactor/src/mailreactor/core/provider_detector.py</path>
+</interface>
+
+<!-- Model Interfaces -->
+<interface>
+  <name>ProviderConfig</name>
+  <kind>pydantic model</kind>
+  <signature>
+class ProviderConfig(BaseModel):
+    """Email provider IMAP/SMTP configuration (auto-detected server settings only)."""
+    provider_name: str  # "gmail", "outlook", "yahoo", etc.
+    imap_host: str
+    imap_port: int = 993
+    imap_ssl: bool = True
+    smtp_host: str
+    smtp_port: int = 587
+    smtp_starttls: bool = True
+  </signature>
+  <path>mailreactor/src/mailreactor/models/account.py</path>
+</interface>
+
+<interface>
+  <name>IMAPConfig</name>
+  <kind>pydantic model</kind>
+  <signature>
+class IMAPConfig(BaseModel):
+    """IMAP server configuration and credentials."""
+    host: str
+    port: int = 993
+    ssl: bool = True
+    username: str  # Usually email, but can differ (shared mailboxes)
+    password: str = Field(..., exclude=True)  # Never serialized
+  </signature>
+  <path>mailreactor/src/mailreactor/models/account.py</path>
+</interface>
+
+<interface>
+  <name>SMTPConfig</name>
+  <kind>pydantic model</kind>
+  <signature>
+class SMTPConfig(BaseModel):
+    """SMTP server configuration and credentials."""
+    host: str
+    port: int = 587
+    starttls: bool = True
+    username: str  # Usually email, but can differ (relay services)
+    password: str = Field(..., exclude=True)  # Never serialized
+  </signature>
+  <path>mailreactor/src/mailreactor/models/account.py</path>
+</interface>
+
+<interface>
+  <name>AccountCredentials</name>
+  <kind>pydantic model</kind>
+  <signature>
+class AccountCredentials(BaseModel):
+    """Complete account credentials stored in backend."""
+    account_id: str  # Generated: acc_{uuid4().hex[:8]}
+    email: EmailStr  # Primary email address
+    imap: IMAPConfig  # IMAP configuration with credentials
+    smtp: SMTPConfig  # SMTP configuration with credentials
+    created_at: datetime
+    connection_status: str = "pending"  # pending, connected, error
+  </signature>
+  <path>mailreactor/src/mailreactor/models/account.py</path>
+</interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+Testing follows project standards from docs/architecture.md and docs/tdd-guide.md:
+- ONLY test functionality WE have added (not Pydantic, PyYAML, Python stdlib)
+- Unit tests for provider detection logic (YAML parsing, domain extraction, provider lookup)
+- Integration test for full detection flow (email → detect_provider → ProviderConfig)
+- Coverage target: 100% for provider_detector.py (small, critical module)
+- Test data: Use sample email addresses (user@gmail.com, user@outlook.com, etc.)
+- Mock external dependencies: No actual IMAP/SMTP connections in this story
+    </standards>
+    
+    <locations>
+mailreactor/tests/unit/test_provider_detector.py
+mailreactor/tests/unit/test_account_models.py
+mailreactor/tests/integration/test_provider_detection_flow.py
+    </locations>
+    
+    <ideas>
+<!-- Unit Tests for provider_detector.py -->
+<test ac="AC2, AC6">
+  <name>test_load_providers_parses_yaml</name>
+  <description>Verify providers.yaml loads successfully and parses into ProviderConfig models</description>
+  <approach>Call load_providers(), assert returns dict with expected provider keys (gmail, outlook, yahoo, icloud), verify ProviderConfig instances have correct fields</approach>
+</test>
+
+<test ac="AC3, AC6">
+  <name>test_extract_domain_valid_email</name>
+  <description>Test domain extraction from valid email addresses</description>
+  <approach>Test user@gmail.com → gmail.com, User@GMAIL.COM → gmail.com (case insensitivity), user@custom.com → custom.com</approach>
+</test>
+
+<test ac="AC3, AC6">
+  <name>test_extract_domain_invalid_email</name>
+  <description>Test domain extraction handles invalid email formats</description>
+  <approach>Test invalid emails (no @, multiple @, empty string) raise ValueError</approach>
+</test>
+
+<test ac="AC1, AC2, AC6">
+  <name>test_detect_provider_gmail</name>
+  <description>Verify Gmail provider detection</description>
+  <approach>detect_provider("user@gmail.com") returns ProviderConfig with imap.gmail.com:993, smtp.gmail.com:587</approach>
+</test>
+
+<test ac="AC1, AC2, AC6">
+  <name>test_detect_provider_outlook</name>
+  <description>Verify Outlook/Office365 provider detection</description>
+  <approach>detect_provider("user@outlook.com") returns ProviderConfig with outlook.office365.com settings</approach>
+</test>
+
+<test ac="AC3, AC6">
+  <name>test_detect_provider_aliases</name>
+  <description>Verify provider aliases work (hotmail.com → outlook, googlemail.com → gmail)</description>
+  <approach>Test user@hotmail.com returns outlook config, user@googlemail.com returns gmail config, user@me.com returns icloud config</approach>
+</test>
+
+<test ac="AC2, AC6">
+  <name>test_detect_provider_unknown_domain</name>
+  <description>Verify unknown domains return None gracefully</description>
+  <approach>detect_provider("user@custom.com") returns None (not in providers.yaml)</approach>
+</test>
+
+<test ac="AC6">
+  <name>test_providers_cache</name>
+  <description>Verify providers.yaml loaded once and cached</description>
+  <approach>Call load_providers() twice, verify second call returns cached dict (no file read)</approach>
+</test>
+
+<!-- Unit Tests for account.py models -->
+<test ac="AC4, AC6">
+  <name>test_provider_config_model</name>
+  <description>Verify ProviderConfig Pydantic model validates correctly</description>
+  <approach>Create ProviderConfig with valid data, assert fields set correctly, verify default values (imap_port=993, imap_ssl=True)</approach>
+</test>
+
+<test ac="AC4, AC6">
+  <name>test_imap_config_password_excluded</name>
+  <description>Verify IMAPConfig password field excluded from serialization</description>
+  <approach>Create IMAPConfig with password, serialize to dict, assert password not present</approach>
+</test>
+
+<test ac="AC4, AC6">
+  <name>test_smtp_config_password_excluded</name>
+  <description>Verify SMTPConfig password field excluded from serialization</description>
+  <approach>Create SMTPConfig with password, serialize to dict, assert password not present</approach>
+</test>
+
+<test ac="AC4, AC6">
+  <name>test_account_credentials_model</name>
+  <description>Verify AccountCredentials combines IMAP/SMTP configs correctly</description>
+  <approach>Create AccountCredentials with IMAPConfig and SMTPConfig, assert email validated as EmailStr, assert account_id, created_at, connection_status set</approach>
+</test>
+
+<!-- Integration Test -->
+<test ac="AC7">
+  <name>test_full_detection_flow</name>
+  <description>End-to-end test: email → detect_provider → ProviderConfig</description>
+  <approach>Load providers.yaml, detect provider for gmail.com, verify ProviderConfig returned with correct settings, test all 4 major providers (Gmail, Outlook, Yahoo, iCloud)</approach>
+</test>
+
+<test ac="AC7">
+  <name>test_detection_case_insensitivity</name>
+  <description>Integration test for case-insensitive detection</description>
+  <approach>Test User@Gmail.COM → gmail provider (uppercase domain handled)</approach>
+</test>
+    </ideas>
+  </tests>
+</story-context>

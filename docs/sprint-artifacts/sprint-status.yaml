@@ -1,6 +1,6 @@
 # Sprint Status - Mail Reactor MVP
 # Generated: 2025-11-28
-# Updated: 2025-12-02
+# Updated: 2025-12-05
 # Project: Mail Reactor
 # Tracking System: file-system
 # Story Location: /home/hcvst/dev/bmad/bmad-mailreactor/docs/sprint-artifacts
@@ -31,7 +31,7 @@
 # - Dev moves story to 'review', SM reviews, then Dev moves to 'done'
 
 generated: 2025-11-28
-updated: 2025-12-04
+updated: 2025-12-05
 project: Mail Reactor
 project_key: mail-reactor-mvp
 tracking_system: file-system
@@ -51,8 +51,8 @@ development_status:
   epic-1-retrospective: completed  # Completed (2025-12-04), Retro saved: epic-1-retro-2025-12-04.md, Action items: 2, Documentation updates: 4 patterns added to architecture.md
 
   # Epic 2: Email Account Connection (8 stories, 10 FRs)
-  epic-2: backlog
-  2-1-provider-configuration-and-basic-auto-detection: backlog
+  epic-2: contexted  # Tech spec created: tech-spec-epic-2.md (2025-12-05)
+  2-1-provider-configuration-and-basic-auto-detection: ready-for-dev  # Context generated (2025-12-05), 4 major providers (Gmail, Outlook, Yahoo, iCloud), YAML config, Pydantic models
   2-2-mozilla-thunderbird-autoconfig-fallback: backlog
   2-3-manual-imap-smtp-configuration-override: backlog
   2-4-account-connection-validation-and-error-handling: backlog
