@@ -52,7 +52,7 @@ development_status:
 
   # Epic 2: Email Account Connection (8 stories, 10 FRs)
   epic-2: contexted  # Tech spec created: tech-spec-epic-2.md (2025-12-05)
-  2-1-provider-configuration-and-basic-auto-detection: ready-for-dev  # Context generated (2025-12-05), 4 major providers (Gmail, Outlook, Yahoo, iCloud), YAML config, Pydantic models
+  2-1-provider-configuration-and-basic-auto-detection: done  # Completed (2025-12-05), Refactored, Tests: 26 passed, Coverage: 100% (provider_detector.py, account.py), 4 providers + 14 aliases
   2-2-mozilla-thunderbird-autoconfig-fallback: backlog
   2-3-manual-imap-smtp-configuration-override: backlog
   2-4-account-connection-validation-and-error-handling: backlog

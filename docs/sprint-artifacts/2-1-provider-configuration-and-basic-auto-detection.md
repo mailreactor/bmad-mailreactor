@@ -1,6 +1,6 @@
 # Story 2.1: Provider Configuration and Basic Auto-Detection
 
-Status: drafted
+Status: done
 
 ## Story
 
@@ -41,56 +41,56 @@ so that I don't have to manually look up server configurations.
 
 ## Tasks / Subtasks
 
-- [ ] Create provider configuration file (AC: providers.yaml with 4+ major providers)
-  - [ ] Create `src/mailreactor/utils/providers.yaml` file
-  - [ ] Add Gmail configuration: imap.gmail.com:993 SSL, smtp.gmail.com:587 STARTTLS
-  - [ ] Add Outlook/Office365: outlook.office365.com:993 SSL, smtp.office365.com:587 STARTTLS
-  - [ ] Add Yahoo Mail: imap.mail.yahoo.com:993 SSL, smtp.mail.yahoo.com:587 STARTTLS
-  - [ ] Add iCloud: imap.mail.me.com:993 SSL, smtp.mail.me.com:587 STARTTLS
-  - [ ] Include domain aliases (e.g., gmail.com, googlemail.com, outlook.com, hotmail.com)
-  - [ ] Document YAML schema in comments (provider key, imap/smtp sections, ssl/starttls flags)
+- [x] Create provider configuration file (AC: providers.yaml with 4+ major providers)
+  - [x] Create `src/mailreactor/utils/providers.yaml` file
+  - [x] Add Gmail configuration: imap.gmail.com:993 SSL, smtp.gmail.com:587 STARTTLS
+  - [x] Add Outlook/Office365: outlook.office365.com:993 SSL, smtp.office365.com:587 STARTTLS
+  - [x] Add Yahoo Mail: imap.mail.yahoo.com:993 SSL, smtp.mail.yahoo.com:587 STARTTLS
+  - [x] Add iCloud: imap.mail.me.com:993 SSL, smtp.mail.me.com:587 STARTTLS
+  - [x] Include domain aliases (e.g., gmail.com, googlemail.com, outlook.com, hotmail.com)
+  - [x] Document YAML schema in comments (provider key, imap/smtp sections, ssl/starttls flags)
 
-- [ ] Create account Pydantic models (AC: ProviderConfig, IMAPConfig, SMTPConfig, AccountCredentials)
-  - [ ] Create `src/mailreactor/models/account.py` module
-  - [ ] Define `ProviderConfig` model: provider_name, imap_host, imap_port, imap_ssl, smtp_host, smtp_port, smtp_starttls
-  - [ ] Define `IMAPConfig` model: host, port, ssl, username, password (Field exclude=True)
-  - [ ] Define `SMTPConfig` model: host, port, starttls, username, password (Field exclude=True)
-  - [ ] Define `AccountCredentials` model: account_id, email, imap (IMAPConfig), smtp (SMTPConfig), created_at, connection_status
-  - [ ] Add field validators: email (EmailStr), ports (1-65535), hosts (non-empty)
-  - [ ] Add docstrings for OpenAPI documentation generation
+- [x] Create account Pydantic models (AC: ProviderConfig, IMAPConfig, SMTPConfig, AccountCredentials)
+  - [x] Create `src/mailreactor/models/account.py` module
+  - [x] Define `ProviderConfig` model: provider_name, imap_host, imap_port, imap_ssl, smtp_host, smtp_port, smtp_starttls
+  - [x] Define `IMAPConfig` model: host, port, ssl, username, password (Field exclude=True)
+  - [x] Define `SMTPConfig` model: host, port, starttls, username, password (Field exclude=True)
+  - [x] Define `AccountCredentials` model: account_id, email, imap (IMAPConfig), smtp (SMTPConfig), created_at, connection_status
+  - [x] Add field validators: email (EmailStr), ports (1-65535), hosts (non-empty)
+  - [x] Add docstrings for OpenAPI documentation generation
 
-- [ ] Implement provider detector (AC: detect_provider function, domain extraction)
-  - [ ] Create `src/mailreactor/core/provider_detector.py` module
-  - [ ] Implement `load_providers() -> Dict[str, ProviderConfig]`: load YAML, parse into Pydantic models
-  - [ ] Implement `extract_domain(email: str) -> str`: split on '@', lowercase, validate format
-  - [ ] Implement `detect_provider(email: str) -> Optional[ProviderConfig]`: domain → provider lookup
-  - [ ] Handle provider aliases (e.g., hotmail.com → outlook, googlemail.com → gmail)
-  - [ ] Return None if domain not found (graceful fallback for unknown providers)
-  - [ ] Cache loaded providers in module-level variable (load once at import)
+- [x] Implement provider detector (AC: detect_provider function, domain extraction)
+  - [x] Create `src/mailreactor/core/provider_detector.py` module
+  - [x] Implement `load_providers() -> Dict[str, ProviderConfig]`: load YAML, parse into Pydantic models
+  - [x] Implement `extract_domain(email: str) -> str`: split on '@', lowercase, validate format
+  - [x] Implement `detect_provider(email: str) -> Optional[ProviderConfig]`: domain → provider lookup
+  - [x] Handle provider aliases (e.g., hotmail.com → outlook, googlemail.com → gmail)
+  - [x] Return None if domain not found (graceful fallback for unknown providers)
+  - [x] Cache loaded providers in module-level variable (load once at import)
 
-- [ ] Add structured logging for provider detection (AC: INFO logs for detection success/failure)
-  - [ ] Log provider detection attempts: `logger.info("detecting_provider", email=email, domain=domain)`
-  - [ ] Log successful detection: `logger.info("provider_detected", domain=domain, provider=provider_key)`
-  - [ ] Log unknown provider: `logger.info("provider_unknown", domain=domain, message="Not in local providers.yaml")`
-  - [ ] Include provider settings in debug logs: `logger.debug("provider_config", imap_host=config.imap_host, smtp_host=config.smtp_host)`
+- [x] Add structured logging for provider detection (AC: INFO logs for detection success/failure)
+  - [x] Log provider detection attempts: `logger.info("detecting_provider", email=email, domain=domain)`
+  - [x] Log successful detection: `logger.info("provider_detected", domain=domain, provider=provider_key)`
+  - [x] Log unknown provider: `logger.info("provider_unknown", domain=domain, message="Not in local providers.yaml")`
+  - [x] Include provider settings in debug logs: `logger.debug("provider_config", imap_host=config.imap_host, smtp_host=config.smtp_host)`
 
-- [ ] Write unit tests for provider detection (AC: test all major providers, unknown domains)
-  - [ ] Test `load_providers()`: verify YAML parsing, Pydantic model creation
-  - [ ] Test `extract_domain()`: valid emails, invalid formats, edge cases
-  - [ ] Test `detect_provider()` for Gmail: user@gmail.com → gmail provider config
-  - [ ] Test `detect_provider()` for Outlook: user@outlook.com, user@hotmail.com → outlook provider
-  - [ ] Test `detect_provider()` for Yahoo: user@yahoo.com → yahoo provider
-  - [ ] Test `detect_provider()` for iCloud: user@icloud.com, user@me.com → icloud provider
-  - [ ] Test unknown domain: user@custom.com → None (not in providers.yaml)
-  - [ ] Test provider aliases: googlemail.com → gmail, hotmail.co.uk → outlook
-  - [ ] Coverage target: 100% for provider_detector.py (small, critical module)
+- [x] Write unit tests for provider detection (AC: test all major providers, unknown domains)
+  - [x] Test `load_providers()`: verify YAML parsing, Pydantic model creation
+  - [x] Test `extract_domain()`: valid emails, invalid formats, edge cases
+  - [x] Test `detect_provider()` for Gmail: user@gmail.com → gmail provider config
+  - [x] Test `detect_provider()` for Outlook: user@outlook.com, user@hotmail.com → outlook provider
+  - [x] Test `detect_provider()` for Yahoo: user@yahoo.com → yahoo provider
+  - [x] Test `detect_provider()` for iCloud: user@icloud.com, user@me.com → icloud provider
+  - [x] Test unknown domain: user@custom.com → None (not in providers.yaml)
+  - [x] Test provider aliases: googlemail.com → gmail, hotmail.co.uk → outlook
+  - [x] Coverage target: 100% for provider_detector.py (small, critical module)
 
-- [ ] Write integration test for end-to-end provider detection (AC: YAML load → detect → return config)
-  - [ ] Test full flow: email → detect_provider → ProviderConfig with correct settings
-  - [ ] Verify providers.yaml loads successfully at module import
-  - [ ] Verify all 4 major providers can be detected
-  - [ ] Test case-insensitivity: User@Gmail.COM → gmail provider
-  - [ ] Test invalid email formats handled gracefully (return None or raise validation error)
+- [x] Write integration test for end-to-end provider detection (AC: YAML load → detect → return config)
+  - [x] Test full flow: email → detect_provider → ProviderConfig with correct settings
+  - [x] Verify providers.yaml loads successfully at module import
+  - [x] Verify all 4 major providers can be detected
+  - [x] Test case-insensitivity: User@Gmail.COM → gmail provider
+  - [x] Test invalid email formats handled gracefully (return None or raise validation error)
 
 ## Dev Notes
 
@@ -416,9 +416,53 @@ claude-3-7-sonnet-20250219
 
 ### Debug Log References
 
+Implementation completed 2025-12-05. All tasks completed with 100% test coverage.
+
 ### Completion Notes List
 
+**2025-12-05 - Story 2.1 Implementation Complete**
+
+Implementation summary:
+- Created providers.yaml with 4 major providers (Gmail, Outlook, Yahoo, iCloud) + 14 domain aliases
+- Created account.py with 4 Pydantic models (ProviderConfig, IMAPConfig, SMTPConfig, MailAccount)
+- Created provider_detector.py with detection logic (load_providers, extract_domain, detect_provider)
+- Added structured logging (INFO: detection attempts/success/failure, DEBUG: provider config details)
+- Added missing dependencies: email-validator (Pydantic EmailStr), pyyaml (YAML parsing)
+- Wrote 26 behavior-focused tests (12 provider_detector, 6 account_models, 7 integration, 1 security)
+- Achieved 100% coverage on both provider_detector.py (47 statements) and account.py (29 statements)
+- All tests pass with zero brittleness (YAML changes don't break tests)
+
+Key design decisions:
+- Module-level caching for providers.yaml (load once at import, _PROVIDERS_CACHE global)
+- Domain aliases stored in YAML "domains" field, re-read during detection (minimal perf impact)
+- Helper function _get_provider_domains() encapsulates YAML re-read logic
+- Password fields excluded from serialization via Field(exclude=True)
+- Separate IMAP/SMTP credentials support advanced use cases (relay services, shared mailboxes)
+- Framework-agnostic: Zero FastAPI imports in core modules (library mode compatible)
+
+All acceptance criteria satisfied:
+- AC1: providers.yaml with 4+ providers ✓
+- AC2: detect_provider() returns ProviderConfig or None ✓
+- AC3: Domain extraction handles aliases ✓
+- AC4: All 4 Pydantic models defined ✓
+- AC5: Structured logging implemented ✓
+- AC6: 100% test coverage achieved ✓
+- AC7: Integration test verifies full flow ✓
+
 ### File List
+
+**New Files:**
+- mailreactor/src/mailreactor/core/providers.yaml (provider configurations - moved from utils/)
+- mailreactor/src/mailreactor/models/account.py (Pydantic models: ProviderConfig, IMAPConfig, SMTPConfig, MailAccount)
+- mailreactor/src/mailreactor/core/provider_detector.py (detection logic)
+- mailreactor/tests/unit/test_provider_detector.py (12 behavior-focused unit tests)
+- mailreactor/tests/unit/test_account_models.py (6 configuration decision tests)
+- mailreactor/tests/integration/test_provider_detection_flow.py (7 integration tests)
+
+**Modified Files:**
+- mailreactor/pyproject.toml (added email-validator, pyyaml dependencies)
+- mailreactor/tests/conftest.py (added loaded_providers fixture)
+- mailreactor/tests/security/test_credential_leaks.py (implemented placeholder test)
 
 ## Change Log
 
@@ -439,3 +483,29 @@ claude-3-7-sonnet-20250219
 - Updated tasks to reflect correct model structure from tech spec
 - Validation result: PASS with improvements applied
 - Status: drafted, enhanced with complete source coverage and tech spec alignment
+
+**2025-12-05:** Story 2.1 implemented by Dev agent (Amelia)
+- Created providers.yaml (4 providers, 14 aliases, documented schema)
+- Created account.py (4 Pydantic models with validation and password exclusion)
+- Created provider_detector.py (detection logic with caching and logging)
+- Added dependencies: email-validator, pyyaml
+- Wrote 56 tests (100% coverage on provider_detector.py and account.py)
+- All 189 regression tests pass
+- Status: review (ready for code review)
+
+**2025-12-05:** Story 2.1 refactored during party-mode team review (HC + team)
+- **File move**: providers.yaml moved from utils/ to core/ (colocated with provider_detector.py)
+- **Model rename**: AccountCredentials → MailAccount (reflects dual IMAP+SMTP connections)
+- **Test refactoring**: Eliminated test brittleness - removed data coupling
+  - Provider tests: 56 → 12 tests (removed hardcoded provider values, test behavior not data)
+  - Model tests: 15 → 6 tests (test OUR config decisions, not Pydantic machinery)
+  - Integration tests: 13 → 7 tests (dynamic YAML validation, behavior-focused)
+  - Total: 56 → 26 tests (54% reduction, 100% coverage maintained)
+- **Security test**: Implemented test_pydantic_model_excludes_credentials (was placeholder)
+- **Test quality improvements**:
+  - Zero hardcoded provider values (Gmail IMAP host, etc.)
+  - Added loaded_providers fixture for dynamic YAML validation
+  - Tests now validate behavior, not configuration data
+  - Changing providers.yaml content no longer breaks tests
+- All 26 tests passing with 100% coverage
+- Status: done
