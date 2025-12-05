@@ -11,7 +11,9 @@ Status: Draft
 
 Epic 2 enables developers to connect their email accounts to Mail Reactor with minimal friction through intelligent auto-detection of IMAP/SMTP settings. The epic implements a multi-tier auto-detection cascade (local providers → Mozilla Autoconfig → ISP fallback → manual configuration) that covers thousands of email providers while maintaining the zero-configuration philosophy critical to Mail Reactor's developer experience.
 
-This epic delivers the foundation for all email operations by establishing secure, validated connections to email accounts. It implements stateless in-memory account management aligned with the NFR-P1 (3-second startup) requirement and NFR-S1 (memory-only credential storage) security constraint.
+This epic delivers the foundation for all email operations by establishing secure, validated connections to email accounts. It implements a **dual-mode architecture** (library + API) with framework-agnostic core modules, aligned with the NFR-P1 (3-second startup) requirement and NFR-S1 (memory-only credential storage) security constraint.
+
+**Key Architectural Decision (SPIKE-002):** Core account management logic is implemented as pure Python modules with zero FastAPI dependencies, enabling library-mode usage while maintaining full API-mode functionality through thin HTTP adapters.
 
 ## Objectives and Scope
 
@@ -35,28 +37,78 @@ This epic delivers the foundation for all email operations by establishing secur
 
 ## System Architecture Alignment
 
+### Dual-Mode Architecture
+
+Mail Reactor supports two usage modes with clear separation of concerns:
+
+**Library Mode (Pure Python):**
+- Import `mailreactor.core` directly in Python applications
+- Dependencies: imapclient, aiosmtplib, httpx, pyyaml, pydantic
+- No FastAPI required
+- User provides event loop with `asyncio.run()`
+- Use case: Embed email account management in existing applications
+
+**API Mode (FastAPI Service):**
+- Run as standalone service with `mailreactor start`
+- Additional dependencies: fastapi, uvicorn, typer, structlog
+- FastAPI routes act as thin HTTP adapters over core logic
+- Use case: Standalone API for webhook processing and email operations
+
+**Package Structure:**
+```
+mailreactor/src/mailreactor/
+├── core/                      # Pure Python, no FastAPI deps
+│   ├── storage.py             # StorageBackend ABC + InMemoryStorage
+│   ├── provider_detector.py   # Auto-detection logic
+│   ├── connection_validator.py # IMAP/SMTP validation
+│   ├── account_manager.py     # Account CRUD with pluggable storage
+│   └── providers.yaml         # Gmail, Outlook, Yahoo, iCloud configs
+│
+├── models/
+│   ├── responses.py           # Generic envelopes ONLY (SuccessResponse, ErrorResponse)
+│   └── account.py             # Domain models (ProviderConfig, IMAPConfig, SMTPConfig, AccountCredentials)
+│
+├── api/                       # FastAPI adapters
+│   ├── schemas.py             # Endpoint-specific models (HealthResponse, AddAccountRequest, AccountResponse)
+│   ├── dependencies.py        # DI providers for AccountManager, etc
+│   └── accounts.py            # HTTP endpoints (thin adapters)
+│
+├── cli/
+│   └── server.py              # Extend with --account flag
+```
+
 **Core Components:**
-- `core/provider_detector.py` - Auto-detection engine with Mozilla Autoconfig integration
-- `core/state_manager.py` - Enhanced with account CRUD operations and asyncio locks
-- `api/accounts.py` - REST API for account management (POST, GET, DELETE)
-- `models/account.py` - Pydantic models for ProviderConfig, AccountCredentials, AccountConfig
+- `core/storage.py` - Generic key-value storage with namespaced keys (account:*, webhook:*, email:*)
+- `core/provider_detector.py` - Auto-detection engine with Mozilla Autoconfig integration (pure Python)
+- `core/connection_validator.py` - IMAP/SMTP connection validation (pure Python)
+- `core/account_manager.py` - Account CRUD with pluggable storage backend (pure Python)
+- `api/accounts.py` - HTTP adapter for account_manager (thin FastAPI layer)
+- `api/schemas.py` - API request/response models (AddAccountRequest, AccountResponse, HealthResponse)
+- `api/dependencies.py` - DI providers for singleton services
+- `models/account.py` - Domain models (ProviderConfig, IMAPConfig, SMTPConfig, AccountCredentials)
+- `models/responses.py` - Generic response envelopes (SuccessResponse, ErrorResponse)
 - `cli/server.py` - Extended with `--account` flag and manual override flags
-- `utils/providers.yaml` - Local provider configurations (Gmail, Outlook, Yahoo, iCloud)
+- `core/providers.yaml` - Local provider configurations (Gmail, Outlook, Yahoo, iCloud)
 
 **Integration Points:**
-- **FastAPI:** Account management endpoints integrated into main app router
-- **IMAPClient:** Connection validation via sync client wrapped with asyncio executor
-- **aiosmtplib:** SMTP connection validation (native async)
-- **httpx:** Async HTTP client for Mozilla Autoconfig queries
-- **structlog:** Structured logging for connection events and auto-detection flow
-- **Typer:** CLI flag handling for account configuration during startup
+- **FastAPI:** Account management endpoints integrated into main app router (API mode only)
+- **IMAPClient:** Connection validation via sync client wrapped with asyncio executor (both modes)
+- **aiosmtplib:** SMTP connection validation (native async, both modes)
+- **httpx:** Async HTTP client for Mozilla Autoconfig queries (both modes)
+- **structlog:** Structured logging for connection events (API mode only)
+- **Typer:** CLI flag handling for account configuration during startup (API mode only)
+- **Pydantic:** Data validation and models (both modes)
 
 **Architectural Constraints:**
-- Stateless design: All account state in-memory, lost on restart (by design)
-- Thread-safe: Asyncio locks protect StateManager account dictionary
-- Security: Passwords marked with `exclude=True` in Pydantic, never logged
-- Performance: Auto-detection cached (24h success, 1h failure), 5s network timeout
-- Error handling: Custom exceptions (IMAPConnectionError, SMTPConnectionError) with provider-specific hints
+- **Framework-agnostic core:** Zero FastAPI imports in `core/` modules (library mode requirement)
+- **Dual-mode support:** Core logic shared between library and API modes
+- **Pluggable storage:** Generic `StorageBackend` abstraction with namespaced keys (account:*, webhook:*, email:*)
+- **Separate IMAP/SMTP credentials:** Backend models reality (relay services, shared mailboxes, OAuth scopes)
+- **Stateless design:** All account state in-memory, lost on restart (by design)
+- **Thread-safe:** Asyncio locks protect storage operations
+- **Security:** Passwords marked with `exclude=True` in Pydantic, never logged
+- **Performance:** Auto-detection cached (24h success, 1h failure), 5s network timeout
+- **Error handling:** Custom exceptions (IMAPConnectionError, SMTPConnectionError) with provider-specific hints
 
 ---
 
@@ -64,37 +116,69 @@ This epic delivers the foundation for all email operations by establishing secur
 
 ### Services and Modules
 
-| Module | Responsibility | Key Methods | Dependencies |
-|--------|---------------|-------------|--------------|
-| `provider_detector.py` | Auto-detect IMAP/SMTP settings | `detect_provider(email)`, `detect_via_mozilla_autoconfig(domain)` | httpx, xml.etree.ElementTree, PyYAML |
-| `state_manager.py` | Thread-safe in-memory account storage | `add_account()`, `get_account()`, `get_all_accounts()`, `remove_account()` | asyncio.Lock |
-| `accounts.py` (API) | REST endpoints for account management | POST `/accounts`, GET `/accounts`, GET `/accounts/{id}`, DELETE `/accounts/{id}` | FastAPI, state_manager, provider_detector |
-| `server.py` (CLI) | CLI account configuration on startup | Enhanced `start()` with `--account`, `--imap-host`, etc. flags | Typer, getpass, state_manager |
-| `account.py` (models) | Pydantic data models | ProviderConfig, AccountCredentials, AccountConfig, AddAccountRequest, AccountResponse | Pydantic, EmailStr |
+| Module | Responsibility | Key Methods | Dependencies | Mode |
+|--------|---------------|-------------|--------------|------|
+| `core/storage.py` | Generic key-value storage abstraction | `set()`, `get()`, `delete()`, `list_keys()`, `exists()` | asyncio.Lock | Both |
+| `core/provider_detector.py` | Auto-detect IMAP/SMTP settings | `detect(email)`, `_detect_via_mozilla(domain)`, `_detect_via_isp(domain)` | httpx, xml.etree.ElementTree, PyYAML | Both |
+| `core/connection_validator.py` | IMAP/SMTP connection validation | `validate(credentials)`, `_validate_imap(config)`, `_validate_smtp(config)` | imapclient, aiosmtplib, asyncio | Both |
+| `core/account_manager.py` | Account lifecycle management | `add_account()`, `get_account()`, `get_all_accounts()`, `remove_account()` | StorageBackend, ConnectionValidator | Both |
+| `api/accounts.py` | HTTP adapter for account_manager | POST `/accounts`, GET `/accounts`, GET `/accounts/{id}`, DELETE `/accounts/{id}` | FastAPI, AccountManager, ProviderDetector | API |
+| `api/dependencies.py` | DI providers for singleton services | `get_storage()`, `get_account_manager()`, `get_provider_detector()` | FastAPI Depends | API |
+| `api/schemas.py` | API request/response models | AddAccountRequest, AccountResponse, AccountSummary, HealthResponse | Pydantic | API |
+| `cli/server.py` | CLI account configuration on startup | Enhanced `start()` with `--account`, `--imap-host`, etc. flags | Typer, getpass, AccountManager | API |
+| `models/account.py` | Domain data models | ProviderConfig, IMAPConfig, SMTPConfig, AccountCredentials | Pydantic, EmailStr | Both |
+| `models/responses.py` | Generic response envelopes | SuccessResponse[T], ErrorResponse, ResponseMeta | Pydantic, Generic | Both |
 
 **Module Interactions:**
+
+**Library Mode:**
+```python
+# User's Python application
+from mailreactor.core.account_manager import AccountManager
+from mailreactor.core.provider_detector import ProviderDetector
+from mailreactor.core.storage import InMemoryStorage
+from mailreactor.models.account import IMAPConfig, SMTPConfig
+
+# Initialize services
+storage = InMemoryStorage()
+detector = ProviderDetector()
+manager = AccountManager(storage=storage)
+
+# Auto-detect and add account
+provider = await detector.detect("user@gmail.com")
+account_id = await manager.add_account(
+    email="user@gmail.com",
+    imap_config=IMAPConfig(...),
+    smtp_config=SMTPConfig(...)
+)
+```
+
+**API Mode (Same Core Logic, HTTP Wrapper):**
 ```
 CLI (--account flag) or REST API (POST /accounts)
     ↓
-provider_detector.detect_provider(email)
+api/dependencies.py (get_account_manager, get_provider_detector)
+    ↓
+provider_detector.detect(email)  # Same core method
     ↓ (local providers.yaml → Mozilla Autoconfig → ISP fallback)
 ProviderConfig returned (or None)
     ↓
 Merge with manual overrides (if provided)
     ↓
-Validate connection (IMAPClient + aiosmtplib)
+account_manager.add_account(email, imap_config, smtp_config)  # Same core method
     ↓
-state_manager.add_account(account_id, credentials)
+    ├─> connection_validator.validate(credentials)  # Validates IMAP + SMTP in parallel
+    └─> storage.set(f"account:{account_id}", credentials)  # Stores in namespaced key
     ↓
 Return account_id to caller (API response or CLI confirmation)
 ```
 
 ### Data Models and Contracts
 
-**ProviderConfig (Pydantic Model):**
+**ProviderConfig (Domain Model - `models/account.py`):**
 ```python
 class ProviderConfig(BaseModel):
-    """Auto-detected IMAP/SMTP configuration for a provider"""
+    """Auto-detected IMAP/SMTP configuration for a provider (server settings only)."""
     provider_name: str  # "gmail", "outlook", "yahoo", etc.
     imap_host: str
     imap_port: int = 993
@@ -104,74 +188,184 @@ class ProviderConfig(BaseModel):
     smtp_starttls: bool = True
 ```
 
-**AccountCredentials (Pydantic Model):**
+**IMAPConfig (Domain Model - `models/account.py`):**
+```python
+class IMAPConfig(BaseModel):
+    """IMAP server configuration and credentials."""
+    host: str
+    port: int = 993
+    ssl: bool = True
+    username: str  # Usually email, but can differ (shared mailboxes)
+    password: str = Field(..., exclude=True)  # Never serialized
+```
+
+**SMTPConfig (Domain Model - `models/account.py`):**
+```python
+class SMTPConfig(BaseModel):
+    """SMTP server configuration and credentials."""
+    host: str
+    port: int = 587
+    starttls: bool = True
+    username: str  # Usually email, but can differ (relay services)
+    password: str = Field(..., exclude=True)  # Never serialized
+```
+
+**AccountCredentials (Domain Model - `models/account.py`):**
 ```python
 class AccountCredentials(BaseModel):
-    """Account credentials stored in memory"""
+    """Complete account credentials stored in backend."""
     account_id: str  # Generated: acc_{uuid4().hex[:8]}
-    email: EmailStr
-    password: str = Field(..., exclude=True)  # Never serialized
-    imap_host: str
-    imap_port: int = 993
-    imap_ssl: bool = True
-    smtp_host: str
-    smtp_port: int = 587
-    smtp_starttls: bool = True
+    email: EmailStr  # Primary email address
+    imap: IMAPConfig  # IMAP configuration with credentials
+    smtp: SMTPConfig  # SMTP configuration with credentials (can differ from IMAP)
     created_at: datetime
     connection_status: str = "pending"  # pending, connected, error
 ```
 
-**AddAccountRequest (API Request Model):**
+**Key Design Decision (SPIKE-002):** Separate IMAP/SMTP credentials model reality - credentials CAN differ for relay services, shared mailboxes, and OAuth scopes. CLI/API hide complexity by defaulting SMTP to IMAP credentials for common case.
+
+**AddAccountRequest (API Schema - `api/schemas.py`):**
 ```python
 class AddAccountRequest(BaseModel):
-    """Request to add a new account"""
+    """API request to add account - simple interface for common case."""
     email: EmailStr
     password: str
-    # Optional manual overrides
+    
+    # Optional: Override auto-detected server settings
     imap_host: str | None = None
     imap_port: int | None = None
     imap_ssl: bool | None = None
     smtp_host: str | None = None
     smtp_port: int | None = None
     smtp_starttls: bool | None = None
+    
+    # Optional: Separate SMTP credentials (advanced - relay services)
+    smtp_username: str | None = None
+    smtp_password: str | None = None
 ```
 
-**AccountResponse (API Response Model):**
+**AccountResponse (API Schema - `api/schemas.py`):**
 ```python
 class AccountResponse(BaseModel):
-    """Response after adding or retrieving account"""
+    """API response (passwords excluded)."""
     account_id: str
     email: str
     connection_status: str
     imap_host: str
     smtp_host: str
     created_at: datetime
-    # Password excluded (security)
+    
+    @classmethod
+    def from_credentials(cls, creds: AccountCredentials):
+        """Convert AccountCredentials to API response."""
+        return cls(
+            account_id=creds.account_id,
+            email=creds.email,
+            connection_status=creds.connection_status,
+            imap_host=creds.imap.host,
+            smtp_host=creds.smtp.host,
+            created_at=creds.created_at
+        )
 ```
 
-**AccountSummary (List Response Model):**
+**AccountSummary (API Schema - `api/schemas.py`):**
 ```python
 class AccountSummary(BaseModel):
-    """Summary for account listing"""
+    """Summary for account listing."""
     account_id: str
     email: str
     connection_status: str
     created_at: datetime
 ```
 
-**StateManager Account Storage:**
+**StorageBackend Account Storage (`core/storage.py`):**
 ```python
-# In-memory structure (not persisted)
+# Generic key-value storage with namespaced keys
+# Single storage instance holds all domain types
 {
-    "acc_a1b2c3d4": AccountCredentials(...),
-    "acc_e5f6g7h8": AccountCredentials(...),
+    "account:acc_a1b2c3d4": AccountCredentials(...),  # Epic 2
+    "account:acc_e5f6g7h8": AccountCredentials(...),  # Epic 2
+    "webhook:wh_xyz123": WebhookDispatch(...),        # Epic 3 (future)
+    "email:msg_abc789": EmailState(...),              # Epic 4 (future)
 }
 # Protected by asyncio.Lock for thread-safety
+# Epic 6: IMAP-backed implementation maps namespaces to folders
 ```
 
 ### APIs and Interfaces
 
-**REST API Endpoints:**
+**Library Mode Python API:**
+
+```python
+# example_library_mode.py
+import asyncio
+from mailreactor.core.account_manager import AccountManager
+from mailreactor.core.provider_detector import ProviderDetector
+from mailreactor.core.storage import InMemoryStorage
+from mailreactor.models.account import IMAPConfig, SMTPConfig
+
+async def main():
+    # Initialize core services (no FastAPI)
+    storage = InMemoryStorage()
+    provider_detector = ProviderDetector()
+    account_manager = AccountManager(storage=storage)
+    
+    # Auto-detect Gmail settings
+    provider_config = await provider_detector.detect("user@gmail.com")
+    print(f"Detected: {provider_config.provider_name}")
+    print(f"IMAP: {provider_config.imap_host}:{provider_config.imap_port}")
+    print(f"SMTP: {provider_config.smtp_host}:{provider_config.smtp_port}")
+    
+    # Build IMAP config
+    imap_config = IMAPConfig(
+        host=provider_config.imap_host,
+        port=provider_config.imap_port,
+        ssl=provider_config.imap_ssl,
+        username="user@gmail.com",
+        password="app-password-here"
+    )
+    
+    # Build SMTP config (same credentials as IMAP - common case)
+    smtp_config = SMTPConfig(
+        host=provider_config.smtp_host,
+        port=provider_config.smtp_port,
+        starttls=provider_config.smtp_starttls,
+        username="user@gmail.com",
+        password="app-password-here"
+    )
+    
+    # Add account (validates connection + stores)
+    account_id = await account_manager.add_account(
+        email="user@gmail.com",
+        imap_config=imap_config,
+        smtp_config=smtp_config
+    )
+    
+    print(f"Account added: {account_id}")
+    
+    # Retrieve account
+    account = await account_manager.get_account(account_id)
+    print(f"Status: {account.connection_status}")
+
+asyncio.run(main())
+```
+
+**Output:**
+```
+Detected: Gmail
+IMAP: imap.gmail.com:993
+SMTP: smtp.gmail.com:587
+Account added: acc_a1b2c3d4
+Status: connected
+```
+
+**Dependencies Needed:**
+- ✅ imapclient, aiosmtplib, httpx, pyyaml, pydantic
+- ❌ FastAPI (NOT needed for library mode)
+
+---
+
+**REST API Endpoints (API Mode):**
 
 **1. POST /accounts - Add Email Account**
 
@@ -555,17 +749,35 @@ typer = "^0.20.0"
 
 ### Integration Points
 
-**StateManager Integration:**
-- Epic 1 created basic StateManager (FR-027: health check access to uptime)
-- Epic 2 enhances with account CRUD methods
+**Storage Integration:**
+- Epic 1: Created in-memory state for health check uptime
+- Epic 2: Introduces generic `StorageBackend` abstraction with `InMemoryStorage` implementation
+- Single storage instance for all domain types (accounts, webhooks, email state)
+- Namespaced keys organize data: `account:*`, `webhook:*`, `email:*`
+- Epic 6: IMAP-backed implementation maps namespaces to folder structure
 - Interface:
   ```python
-  async def add_account(account_id: str, credentials: AccountCredentials)
+  async def set(key: str, value: Any) -> None
+  async def get(key: str) -> Any | None
+  async def delete(key: str) -> None
+  async def list_keys(prefix: str = "") -> list[str]
+  async def exists(key: str) -> bool
+  async def set_many(items: dict[str, Any]) -> None
+  async def get_many(keys: list[str]) -> dict[str, Any]
+  ```
+- Thread-safety: asyncio.Lock protects storage operations
+
+**AccountManager Integration:**
+- New core module in Epic 2
+- Manages account lifecycle with pluggable storage
+- Interface:
+  ```python
+  async def add_account(email: str, imap_config: IMAPConfig, smtp_config: SMTPConfig) -> str
   async def get_account(account_id: str) -> Optional[AccountCredentials]
   async def get_all_accounts() -> List[AccountCredentials]
   async def remove_account(account_id: str) -> None
   ```
-- Thread-safety: asyncio.Lock protects account dictionary
+- Uses namespaced storage keys: `account:{account_id}`
 
 **CLI Integration:**
 - Epic 1 created `mailreactor start` command
@@ -577,6 +789,8 @@ typer = "^0.20.0"
 - New router: `accounts_router = APIRouter(prefix="/accounts", tags=["accounts"])`
 - Registered in `main.py`: `app.include_router(accounts_router)`
 - Follows Epic 1 patterns: response envelopes, error handling, request ID middleware
+- **Thin adapter pattern:** API endpoints delegate to `AccountManager` core methods
+- Dependency injection: `api/dependencies.py` provides singleton services
 
 **Mozilla Autoconfig External Service:**
 - URL: `https://autoconfig.thunderbird.net/v1.1/{domain}`
@@ -662,22 +876,31 @@ typer = "^0.20.0"
 3. Then account is lost from StateManager (stateless design)
 4. And account must be re-added (via API or CLI flag)
 
+**AC-2.11: Library Mode Usage (SPIKE-002)**
+1. Given mailreactor is installed without `[api]` extras
+2. When `from mailreactor.core.account_manager import AccountManager` is imported
+3. Then import succeeds without FastAPI installed
+4. And `AccountManager().add_account()` works with user-provided event loop
+5. And no HTTP server dependencies are loaded
+6. And core modules contain zero FastAPI imports
+
 ---
 
 ## Traceability Mapping
 
 | Acceptance Criteria | Spec Section | Component | Test Strategy |
 |---------------------|--------------|-----------|---------------|
-| AC-2.1: Local provider auto-detection | Data Models, Workflows | `provider_detector.py`, `providers.yaml` | Unit test: mock providers.yaml, assert config returned |
-| AC-2.2: Mozilla Autoconfig fallback | Workflows, Dependencies | `provider_detector.py`, httpx | Integration test: mock httpx response, verify XML parsing |
-| AC-2.3: Manual override | APIs, Workflows | `accounts.py`, `server.py` CLI | Unit test: merge auto-detected + manual, assert override |
-| AC-2.4: Connection validation | Workflows, NFR-R1 | IMAPClient, aiosmtplib | Integration test: mock IMAP/SMTP servers, test validation |
-| AC-2.5: Account REST API | APIs, Data Models | `accounts.py`, `state_manager.py` | API test: TestClient, verify CRUD operations |
-| AC-2.6: CLI account configuration | APIs (CLI), Workflows | `server.py`, `state_manager.py` | Integration test: invoke CLI, mock getpass, verify account stored |
-| AC-2.7: Error handling | NFR-R2, Workflows | `accounts.py`, exception handlers | Unit test: trigger error paths, assert error messages |
+| AC-2.1: Local provider auto-detection | Data Models, Workflows | `core/provider_detector.py`, `core/providers.yaml` | Unit test: mock providers.yaml, assert config returned |
+| AC-2.2: Mozilla Autoconfig fallback | Workflows, Dependencies | `core/provider_detector.py`, httpx | Integration test: mock httpx response, verify XML parsing |
+| AC-2.3: Manual override | APIs, Workflows | `api/accounts.py`, `cli/server.py` | Unit test: merge auto-detected + manual, assert override |
+| AC-2.4: Connection validation | Workflows, NFR-R1 | `core/connection_validator.py`, IMAPClient, aiosmtplib | Integration test: mock IMAP/SMTP servers, test validation |
+| AC-2.5: Account REST API | APIs, Data Models | `api/accounts.py`, `core/account_manager.py`, `core/storage.py` | API test: TestClient, verify CRUD operations |
+| AC-2.6: CLI account configuration | APIs (CLI), Workflows | `cli/server.py`, `core/account_manager.py` | Integration test: invoke CLI, mock getpass, verify account stored |
+| AC-2.7: Error handling | NFR-R2, Workflows | `api/accounts.py`, exception handlers | Unit test: trigger error paths, assert error messages |
 | AC-2.8: Provider-specific hints | NFR-R2, Workflows | Error handling logic | Unit test: trigger Gmail auth failure, assert hint present |
-| AC-2.9: Password exclusion | NFR-S1, Data Models | Pydantic `exclude=True` | Unit test: serialize AccountCredentials, assert password absent |
-| AC-2.10: Stateless operation | System Arch, NFR-R3 | `state_manager.py` | Integration test: add account, restart StateManager, assert empty |
+| AC-2.9: Password exclusion | NFR-S1, Data Models | Pydantic `exclude=True` in `models/account.py` | Unit test: serialize AccountCredentials, assert password absent |
+| AC-2.10: Stateless operation | System Arch, NFR-R3 | `core/storage.py` | Integration test: add account, restart storage, assert empty |
+| AC-2.11: Library mode usage | System Arch (Dual-Mode) | `core/` modules | Unit test: import without FastAPI, verify zero HTTP deps |
 
 **FR Coverage:**
 - FR-001: AC-2.1, AC-2.2 (auto-detection)
@@ -781,37 +1004,67 @@ typer = "^0.20.0"
 - Status: Acceptable (no sensitive data transmitted, only domain)
 - Action: Document in security notes, consider HTTPS fallback if ISP supports
 
+**Q6: Storage Abstraction Scope (SPIKE-002)**
+- Question: Should Epic 2 introduce generic `StorageBackend` or Epic 2-specific `AccountStorage`?
+- Status: ✅ RESOLVED - Generic `StorageBackend` with namespaced keys
+- Rationale: Single storage instance for all domain types (accounts, webhooks, email state). Epic 6 IMAP backend maps namespaces to folder structure. ~50 lines now, pays dividends in Epic 6.
+- Action: Implement `core/storage.py` with `StorageBackend` ABC and `InMemoryStorage`
+
+**Q7: Separate IMAP/SMTP Credentials (SPIKE-002)**
+- Question: Should credentials be combined (single password) or separate (IMAP + SMTP configs)?
+- Status: ✅ RESOLVED - Separate `IMAPConfig` and `SMTPConfig`
+- Rationale: Backend models reality (relay services, shared mailboxes, OAuth scopes). CLI/API hide complexity for common case (same credentials).
+- Action: Update `AccountCredentials` model with separate `imap` and `smtp` fields
+
 ---
 
 ## Test Strategy Summary
 
 ### Unit Tests (Story-Level)
 
-**provider_detector.py:**
+**core/storage.py:**
+- Test InMemoryStorage CRUD operations (set, get, delete)
+- Test list_keys with prefix filtering (account:*, webhook:*)
+- Test exists, set_many, get_many batch operations
+- Test thread-safety (asyncio.Lock prevents race conditions)
+- Test namespaced key isolation (account:* vs webhook:*)
+
+**core/provider_detector.py:**
 - Test local providers.yaml lookup (gmail, outlook, yahoo, icloud)
 - Test domain extraction (gmail.com, outlook.com, custom domains)
 - Test Mozilla Autoconfig XML parsing (mock httpx response)
 - Test cache hit/miss logic (in-memory cache)
 - Test error handling (network timeout, invalid XML)
+- Test zero FastAPI imports (library mode requirement)
 
-**state_manager.py:**
-- Test add_account (generates account_id, stores credentials)
-- Test get_account (retrieves by account_id)
-- Test get_all_accounts (returns list)
-- Test remove_account (deletes from dict)
-- Test thread-safety (asyncio.Lock prevents race conditions)
+**core/connection_validator.py:**
+- Test IMAP validation (mock IMAPClient, success/failure)
+- Test SMTP validation (mock aiosmtplib, success/failure)
+- Test parallel validation (asyncio.gather)
+- Test custom exceptions (IMAPConnectionError, SMTPConnectionError)
+- Test zero FastAPI imports (library mode requirement)
 
-**accounts.py (API):**
+**core/account_manager.py:**
+- Test add_account (generates account_id, validates, stores)
+- Test get_account (retrieves by account_id from storage)
+- Test get_all_accounts (lists with prefix filter)
+- Test remove_account (deletes from storage)
+- Test validation failure handling (IMAP/SMTP errors)
+- Test zero FastAPI imports (library mode requirement)
+
+**api/accounts.py:**
 - Test POST /accounts (success: auto-detected config)
 - Test POST /accounts (success: manual config)
+- Test POST /accounts (success: separate SMTP credentials)
 - Test POST /accounts (failure: no config found, no manual override)
 - Test POST /accounts (failure: connection validation failed)
 - Test GET /accounts (list accounts)
 - Test GET /accounts/{id} (retrieve details, password excluded)
 - Test DELETE /accounts/{id} (remove account)
 - Test error responses (400, 404, 503)
+- Test thin adapter pattern (delegates to AccountManager)
 
-**server.py (CLI):**
+**cli/server.py:**
 - Test --account flag parsing
 - Test auto-detection invoked from CLI
 - Test manual override flags (--imap-host, --smtp-host)
@@ -822,7 +1075,7 @@ typer = "^0.20.0"
 
 **End-to-End Account Addition (API):**
 1. POST /accounts with gmail.com (auto-detect)
-2. Verify account stored in StateManager
+2. Verify account stored in StorageBackend
 3. GET /accounts returns account
 4. GET /accounts/{id} returns details (no password)
 5. DELETE /accounts/{id} removes account
@@ -832,8 +1085,14 @@ typer = "^0.20.0"
 1. Invoke `mailreactor start --account test@gmail.com`
 2. Mock password input (getpass)
 3. Mock IMAP/SMTP connection (success)
-4. Verify account in StateManager
+4. Verify account in StorageBackend
 5. Verify server starts successfully
+
+**Library Mode Integration:**
+1. Import core modules without FastAPI installed
+2. Initialize AccountManager with InMemoryStorage
+3. Auto-detect provider, add account, retrieve account
+4. Verify no HTTP dependencies loaded
 
 **Mozilla Autoconfig Integration:**
 1. Mock httpx to return valid XML
@@ -845,9 +1104,9 @@ typer = "^0.20.0"
 **Connection Validation:**
 1. Mock IMAPClient to succeed
 2. Mock aiosmtplib to succeed
-3. Add account, verify stored
+3. Add account via AccountManager, verify stored
 4. Mock IMAPClient to fail
-5. Add account, verify HTTP 503 returned
+5. Add account, verify exception raised (library) or HTTP 503 (API)
 
 ### Performance Tests
 
@@ -862,8 +1121,8 @@ typer = "^0.20.0"
 - Measure parallel validation (target <10s, not 20s)
 
 **Memory Footprint:**
-- Measure StateManager size with 100 accounts
-- Measure Mozilla cache size with 100 domains
+- Measure InMemoryStorage size with 100 accounts
+- Measure Mozilla Autoconfig cache size with 100 domains
 - Target: <10MB for Epic 2 components
 
 ### Security Tests
@@ -874,20 +1133,29 @@ typer = "^0.20.0"
 - Verify Pydantic excludes password on serialization
 
 **Credential Storage:**
-- Verify passwords only in StateManager memory
+- Verify passwords only in InMemoryStorage
 - Verify no disk writes (stateless check)
 - Verify state cleared on account removal
+- Verify library mode has no FastAPI imports
 
 ### Test Coverage Goals
 
-- Unit test coverage: 85%+ for core modules (provider_detector, state_manager)
-- API test coverage: 90%+ for accounts.py endpoints
-- Integration test coverage: Key user flows (add account, list accounts, remove account)
+- Unit test coverage: 85%+ for core modules (storage, provider_detector, connection_validator, account_manager)
+- API test coverage: 90%+ for api/accounts.py endpoints
+- Integration test coverage: Key user flows (add account, list accounts, remove account) in both modes
+- Library mode coverage: Import tests without FastAPI, verify zero HTTP dependencies
 - Error path coverage: All error codes tested (400, 404, 503)
 
 ---
 
-**Document Status:** Draft  
+**Document Status:** Updated with SPIKE-002 findings  
 **Next Review:** Post-implementation (after Story 2.8 completion)  
 **Change Log:**
 - 2025-12-04: Initial draft created from PRD, Architecture, and Epics documents
+- 2025-12-05: Integrated SPIKE-002 library/API separation architecture
+  - Added dual-mode architecture (library + API)
+  - Introduced generic StorageBackend abstraction with namespaced keys
+  - Separated IMAP/SMTP credentials (IMAPConfig + SMTPConfig)
+  - Added library mode usage examples and AC-2.11
+  - Updated all component references (core/* vs api/*)
+  - Resolved Q6 (storage scope) and Q7 (credential separation)
