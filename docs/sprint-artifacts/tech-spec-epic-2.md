@@ -128,6 +128,100 @@ mailreactor/src/mailreactor/
 | `cli/server.py` | CLI account configuration on startup | Enhanced `start()` with `--account`, `--imap-host`, etc. flags | Typer, getpass, AccountManager | API |
 | `models/account.py` | Domain data models | ProviderConfig, IMAPConfig, SMTPConfig, AccountCredentials | Pydantic, EmailStr | Both |
 | `models/responses.py` | Generic response envelopes | SuccessResponse[T], ErrorResponse, ResponseMeta | Pydantic, Generic | Both |
+| `core/encryption.py` | Password encryption/decryption | `generate_salt()`, `derive_key()`, `encrypt_password()`, `decrypt_password()` | cryptography (Fernet, PBKDF2) | Both |
+| `core/account_config.py` | TOML file operations | `load_config()`, `save_config()`, `get_config_path()`, `initialize_config()` | tomllib/tomli, Path | Both |
+| `core/config_watcher.py` | Hot reload via polling | `start()`, `stop()`, `_poll_loop()` | threading, os.path.getmtime | API |
+| `cli/accounts.py` | CLI account management commands | `add()`, `list()`, `edit()`, `remove()` | Typer, getpass, Rich, AccountManager | API |
+| `middleware/https.py` | HTTPS enforcement | `require_https_for_mutations()` | FastAPI Request | API |
+
+### Account Encryption Architecture (Story 2.1.2)
+
+**Encryption Strategy:**
+- Algorithm: Fernet (symmetric encryption via `cryptography` library)
+- Key Derivation: PBKDF2 with SHA-256, 100,000+ iterations (OWASP standard)
+- Salt: 32 bytes random, base64 encoded, stored in config.toml
+- Master Password: From `MAILREACTOR_PASSWORD` env var or runtime prompt
+
+**Encryption Flow:**
+```
+Master Password + Salt → PBKDF2 (100k iterations) → Fernet Key
+Account Password + Fernet Key → Encrypted Blob → config.toml
+```
+
+**Decryption Flow:**
+```
+config.toml → Load Salt + Encrypted Blob
+Master Password + Salt → PBKDF2 → Fernet Key
+Encrypted Blob + Fernet Key → Decrypted Password → Memory
+```
+
+**Security Properties:**
+- Master password never persisted to disk (env var or prompt only)
+- Passwords encrypted at rest (config.toml)
+- Passwords decrypted in memory (process lifetime)
+- Salt prevents rainbow table attacks
+- PBKDF2 iterations slow down brute-force attacks
+
+### Config File Management (Story 2.1.2)
+
+**File Location:** `~/.config/mailreactor/config.toml` (default, overridable via `--config`)
+
+**File Structure:**
+```toml
+[mailreactor]
+encryption_key_salt = "base64-encoded-32-bytes"
+
+[[accounts]]
+email = "user@example.com"
+encrypted_password = "fernet-encrypted-blob"
+imap_host = "imap.gmail.com"
+imap_port = 993
+imap_use_tls = true
+smtp_host = "smtp.gmail.com"
+smtp_port = 587
+smtp_use_tls = true
+```
+
+**Atomic Write Pattern:**
+1. Write to temporary file (same filesystem)
+2. Atomic rename to `config.toml` (POSIX atomic operation)
+3. Prevents partial reads during concurrent writes
+4. File permissions: 0600 (user read/write only)
+
+**TOML Operations:**
+- Read: `tomllib.load()` (Python 3.11+ stdlib) or `tomli` library
+- Write: `toml.dump()` to temp file → atomic rename
+- Validation: Pydantic models enforce required fields
+
+### Hot Reload Mechanism (Story 2.1.2)
+
+**Approach:** 5-second polling (simple, cross-platform, predictable)
+
+**Implementation:**
+```python
+# Background thread in mailreactor start
+def config_poller():
+    last_mtime = os.path.getmtime(config_path)
+    while running:
+        time.sleep(5)
+        current_mtime = os.path.getmtime(config_path)
+        if current_mtime > last_mtime:
+            account_manager.reload_config()  # Atomic reload
+            last_mtime = current_mtime
+```
+
+**Reload Behavior:**
+- API writes: Immediate reload (don't wait for polling)
+- CLI writes: Polling detects within 5 seconds
+- Manual edits: Polling detects within 5 seconds
+- Malformed config: Process crashes (fail-fast) with clear error
+
+**Why Polling vs File Watching:**
+- ✅ Simple, predictable, cross-platform identical
+- ✅ Zero race conditions (file fully written before detection)
+- ✅ No external dependencies (stdlib only)
+- ✅ Negligible overhead (one `stat()` per 5 seconds)
+- ✅ Natural debouncing window
 
 **Module Interactions:**
 

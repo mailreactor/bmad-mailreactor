@@ -53,12 +53,13 @@ development_status:
   # Epic 2: Email Account Connection (8 stories, 10 FRs)
   epic-2: contexted  # Tech spec created: tech-spec-epic-2.md (2025-12-05)
   2-1-provider-configuration-and-basic-auto-detection: done  # Completed (2025-12-05), Refactored, Tests: 26 passed, Coverage: 100% (provider_detector.py, account.py), 4 providers + 14 aliases
-  2-2-mozilla-thunderbird-autoconfig-fallback: backlog
+  2-1-2-cli-account-management-with-encrypted-storage: drafted  # Drafted (2025-12-05), From SPIKE-003, Can run parallel with 2-2, Implements encrypted TOML config + CLI/API account management + hot reload
+  2-2-mozilla-thunderbird-autoconfig-fallback: drafted
   2-3-manual-imap-smtp-configuration-override: backlog
   2-4-account-connection-validation-and-error-handling: backlog
   2-5-account-listing-and-retrieval-api: backlog
   2-6-in-memory-state-management-for-accounts: backlog
-  2-7-startup-account-configuration-via-cli-flag: backlog
+  2-7-startup-account-configuration-via-cli-flag: cancelled  # Superseded by Story 2.1.2 (CLI account management with encrypted config file)
   2-8-account-removal-api: backlog
   epic-2-retrospective: optional
 

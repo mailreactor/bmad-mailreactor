@@ -38,6 +38,7 @@ cd mailreactor && .venv/bin/pytest <test_file>
 ### Testing Principles (CRITICAL)
 
 **✅ ONLY test functionality WE have added**  
+**❌ DO NOT test concrete config values but our config machinery**  
 **❌ DO NOT test Python machinery**  
 **❌ DO NOT test 3rd party library functionality**  
 **❌ DO NOT test framework behavior**
@@ -46,6 +47,8 @@ cd mailreactor && .venv/bin/pytest <test_file>
 
 - ✅ **Test:** Our business logic, our domain rules, our API endpoints, our email parsing logic
 - ❌ **Don't test:** FastAPI routing works, Pydantic validates, logging library logs, that `email.parser.Parser` actually parses emails
+- ✅ **Test:** That our provider.yaml configuration machinery works 
+- ❌ **Don't test:** That the provider config contains gmail, outlook etc as that might change.
 
 **Rationale:** Keep tests focused and minimal - only verify the value we're adding to the codebase, not that Python or our dependencies work correctly.
 
@@ -820,6 +823,231 @@ async def test_list_messages_auth_error(mock_imap_auth_error):
     assert "authentication failed" in response.json()["detail"].lower()
 ```
 
+### 8. Encryption Pattern (Password Storage with Fernet + PBKDF2)
+
+**Source:** Story 2.1.2, SPIKE-003
+
+**Problem:** Passwords must be stored persistently (config file) but remain secure against theft, accidental exposure, or unauthorized access.
+
+**Solution:** Fernet symmetric encryption with PBKDF2 key derivation provides industry-standard encryption with minimal complexity.
+
+**Implementation:**
+
+```python
+# core/encryption.py
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives import hashes
+import base64
+import secrets
+
+def generate_salt() -> str:
+    """Generate random salt for PBKDF2 (base64 encoded)."""
+    return base64.b64encode(secrets.token_bytes(32)).decode('utf-8')
+
+def derive_key(master_password: str, salt: str) -> bytes:
+    """Derive Fernet key from master password + salt using PBKDF2."""
+    kdf = PBKDF2(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=base64.b64decode(salt),
+        iterations=100_000,  # OWASP recommendation
+    )
+    key = kdf.derive(master_password.encode('utf-8'))
+    return base64.urlsafe_b64encode(key)
+
+def encrypt_password(password: str, key: bytes) -> str:
+    """Encrypt password with Fernet (symmetric encryption)."""
+    f = Fernet(key)
+    encrypted = f.encrypt(password.encode('utf-8'))
+    return encrypted.decode('utf-8')
+
+def decrypt_password(encrypted: str, key: bytes) -> str:
+    """Decrypt password with Fernet."""
+    f = Fernet(key)
+    decrypted = f.decrypt(encrypted.encode('utf-8'))
+    return decrypted.decode('utf-8')
+```
+
+**Security Properties:**
+- Fernet provides authenticated encryption (AES-128-CBC + HMAC-SHA256)
+- PBKDF2 slows down brute-force attacks (100k+ iterations)
+- Salt prevents rainbow table attacks
+- Master password never persisted to disk
+- Atomic file writes prevent partial reads
+
+**When to Use:**
+- Storing sensitive credentials that must persist across restarts
+- Balancing security with operational simplicity (no external KMS)
+- Self-hosted environments where user controls master password
+
+**Trade-offs:**
+- Master password required on every startup (env var or prompt)
+- Loss of master password = loss of access to accounts
+- Not suitable for multi-tenant SaaS (use HSM/KMS instead)
+
+---
+
+### 9. TOML Config File Pattern (Persistent Account Storage)
+
+**Source:** Story 2.1.2, SPIKE-003
+
+**Problem:** Account configurations must persist across restarts, support multiple accounts, and remain human-readable for debugging.
+
+**Solution:** TOML file with atomic writes and structured validation via Pydantic.
+
+**Implementation:**
+
+```python
+# core/account_config.py
+from pathlib import Path
+import tomllib  # Python 3.11+
+import toml
+import os
+
+def get_config_path() -> Path:
+    """Get default config path: ~/.config/mailreactor/config.toml"""
+    return Path.home() / ".config" / "mailreactor" / "config.toml"
+
+def load_config(config_path: Path) -> dict:
+    """Load TOML config file."""
+    with open(config_path, "rb") as f:
+        return tomllib.load(f)
+
+def save_config(config_path: Path, data: dict):
+    """Save config with atomic write."""
+    # Write to temp file
+    temp_path = config_path.with_suffix(".tmp")
+    with open(temp_path, "w") as f:
+        toml.dump(data, f)
+    
+    # Atomic rename (POSIX)
+    os.replace(temp_path, config_path)
+    
+    # Set file permissions (user read/write only)
+    config_path.chmod(0o600)
+```
+
+**File Structure:**
+```toml
+[mailreactor]
+encryption_key_salt = "base64-encoded-32-bytes"
+
+[[accounts]]
+email = "user@example.com"
+encrypted_password = "fernet-encrypted-blob"
+imap_host = "imap.gmail.com"
+imap_port = 993
+imap_use_tls = true
+smtp_host = "smtp.gmail.com"
+smtp_port = 587
+smtp_use_tls = true
+```
+
+**Pattern Benefits:**
+- Human-readable format (easier debugging than JSON/binary)
+- Atomic writes prevent corruption
+- File permissions restrict access (0600)
+- Pydantic validation ensures required fields
+- Supports arrays of tables (`[[accounts]]`)
+
+**When to Use:**
+- Persistent configuration that changes infrequently
+- User-editable config (TOML more readable than JSON)
+- Single-file simplicity (no database required)
+
+---
+
+### 10. Hot Reload Pattern (Config Change Detection via Polling)
+
+**Source:** Story 2.1.2, SPIKE-003
+
+**Problem:** Config file changes (via CLI, API, or manual edits) must be reflected in running process without restart.
+
+**Solution:** Background thread polling config file mtime every 5 seconds, triggering atomic reload on change.
+
+**Implementation:**
+
+```python
+# core/config_watcher.py
+import threading
+import time
+from pathlib import Path
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+class ConfigWatcher:
+    """Watch config file for changes and trigger reload."""
+    
+    def __init__(self, config_path: Path, account_manager):
+        self.config_path = config_path
+        self.account_manager = account_manager
+        self._running = False
+        self._thread = None
+        self._last_mtime = 0
+    
+    def start(self):
+        """Start polling thread."""
+        if self.config_path.exists():
+            self._last_mtime = self.config_path.stat().st_mtime
+        
+        self._running = True
+        self._thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self._thread.start()
+        logger.info("config_watcher_started", interval_seconds=5)
+    
+    def stop(self):
+        """Stop polling thread gracefully."""
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=10)
+        logger.info("config_watcher_stopped")
+    
+    def _poll_loop(self):
+        """5-second polling loop with mtime detection."""
+        while self._running:
+            time.sleep(5)
+            
+            if not self.config_path.exists():
+                continue
+            
+            current_mtime = self.config_path.stat().st_mtime
+            if current_mtime > self._last_mtime:
+                logger.info("config_changed", path=str(self.config_path))
+                try:
+                    self.account_manager.reload_config(self.config_path)
+                    self._last_mtime = current_mtime
+                except Exception as e:
+                    logger.error("reload_failed", error=str(e))
+                    raise  # Fail-fast: crash process
+```
+
+**Reload Behavior:**
+- **API writes:** Immediate reload (don't wait for polling)
+- **CLI writes:** Detected within 5 seconds
+- **Manual edits:** Detected within 5 seconds
+- **Malformed config:** Process crashes with clear error (fail-fast)
+
+**Why Polling vs File Watching:**
+- ✅ Simple, predictable, cross-platform identical behavior
+- ✅ Zero race conditions (file fully written before detection)
+- ✅ No external dependencies (stdlib only)
+- ✅ Negligible overhead (one `stat()` call per 5 seconds)
+- ✅ Natural debouncing window (multiple edits within 5s = single reload)
+
+**When to Use:**
+- Config files that change infrequently (< 1/minute)
+- Cross-platform consistency required
+- Simplicity preferred over instant detection
+
+**Trade-offs:**
+- 5-second delay for CLI/manual changes (API writes bypass polling)
+- Background thread overhead (minimal)
+- Not suitable for high-frequency config changes
+
+---
+
 ## Consistency Rules
 
 ### Naming Conventions
@@ -1173,6 +1401,14 @@ X-API-Key: your-api-key-here
    - Detailed errors in development
    - No stack traces in API responses
    - Sensitive data redacted from logs
+
+6. **Password Encryption (Story 2.1.2)**
+   - Fernet symmetric encryption (AES-128-CBC + HMAC-SHA256)
+   - PBKDF2 key derivation: 100,000+ iterations (OWASP standard)
+   - Random 32-byte salt (base64 encoded, stored in config.toml)
+   - Master password from `MAILREACTOR_PASSWORD` env var or runtime prompt
+   - Passwords encrypted at rest, decrypted in memory
+   - Atomic file writes prevent config corruption
 
 **Phase 2 Security Enhancements:**
 - Rate limiting per IP/account

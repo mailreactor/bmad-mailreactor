@@ -76,10 +76,13 @@ When developers say "I chose Mail Reactor because I wanted to, not because I had
 **Core Capabilities:**
 
 1. **Zero-Configuration Account Connection**
-   - Add email account via single CLI flag: `--account you@gmail.com`
+   - Add email account via CLI: `mailreactor accounts add you@gmail.com`
    - Auto-detect IMAP/SMTP servers for major providers (Gmail, Outlook, Yahoo)
-   - Secure credential handling (app passwords for MVP, OAuth2 in Phase 2)
-   - Single account support only (multi-account deferred)
+   - Persistent encrypted config file: `~/.config/mailreactor/config.toml`
+   - Secure credential handling: Fernet encryption + PBKDF2 key derivation (100k+ iterations)
+   - Master password from `MAILREACTOR_PASSWORD` env var or runtime prompt
+   - Multiple accounts supported (email as account ID)
+   - Hot reload: config changes detected within 5 seconds (no restart required)
 
 2. **Simple Email Sending (SMTP Abstraction)**
    - REST API endpoint: `POST /accounts/{id}/messages`
@@ -95,16 +98,18 @@ When developers say "I chose Mail Reactor because I wanted to, not because I had
    - Pagination with cursor-based navigation
    - Server-side filtering (efficient - only matching emails transferred)
 
-4. **Stateless In-Memory Architecture**
-   - No database required - rebuild state from IMAP on startup
+4. **Hybrid State Architecture**
+   - No database required for email data - rebuild from IMAP on startup
+   - Account credentials persisted to encrypted config file (secure, optional)
    - Fast restart (< 3 seconds to operational)
    - In-memory cache of recent emails (configurable timeframe)
    - Smart filtering to limit ingestion scope
-   - Optional persistence flag (hooks for future Production Pack)
+   - Optional IMAP-as-database mode for advanced persistence (Epic 6)
 
 5. **One-Command Installation and Startup**
    - PyPI package: `pipx install mailreactor` (API mode) or `pip install mailreactor` (library mode)
-   - Single command to run: `mailreactor start --account you@gmail.com`
+   - Single command to run: `mailreactor accounts add you@gmail.com` then `mailreactor start`
+   - Config persisted - subsequent starts: `mailreactor start` (no re-configuration)
    - Zero system dependencies (pure Python)
    - Sensible defaults (port 8080, localhost binding)
    - Health check endpoint: `GET /health`

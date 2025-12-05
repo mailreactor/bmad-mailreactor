@@ -614,6 +614,55 @@ So that I don't have to manually look up server configurations.
 
 ---
 
+### Story 2.1.2: CLI Account Management with Encrypted Storage
+
+As a developer or system administrator,  
+I want to manage email accounts via CLI commands with encrypted password storage,  
+So that I can securely configure multiple accounts without restarting the service.
+
+**Acceptance Criteria:**
+
+**Given** a need for persistent account management  
+**When** implementing CLI-based account management  
+**Then** Mail Reactor provides:
+- CLI commands: `mailreactor accounts add|list|edit|remove`
+- Encrypted TOML config file: `~/.config/mailreactor/config.toml`
+- Hot reload via 5-second polling (config changes detected automatically)
+- API endpoints: `POST/GET/PUT/DELETE /accounts`
+- HTTPS enforcement middleware for production API usage
+
+**And** Account encryption security:
+- Fernet symmetric encryption with PBKDF2 key derivation
+- Master password from `MAILREACTOR_PASSWORD` env var or runtime prompt
+- Passwords encrypted before storage in config file
+- 100,000+ PBKDF2 iterations (OWASP standard)
+
+**And** Config file structure:
+- Single `~/.config/mailreactor/config.toml` file
+- Multiple accounts supported (email is account ID)
+- Atomic file writes prevent corruption
+- Hot reload detects changes within 5 seconds
+
+**And** CLI autodiscovery integration:
+- `mailreactor accounts add` uses provider detection (Story 2.1)
+- Falls back to Mozilla autoconfig (Story 2.2) if provider not found
+- Interactive password prompt (no echo)
+- Writes complete encrypted config to TOML
+
+**Prerequisites:** Story 2.1 (provider detection), SPIKE-003 (architecture decisions)
+
+**Technical Notes:**
+- Source: SPIKE-003-cli-account-management.md
+- Supersedes Story 2.7 (startup via CLI flag with `--account`)
+- Implements encrypted config file vs ephemeral `--account` flag
+- Can run in parallel with Story 2.2 (Mozilla autoconfig)
+- FR-002: Add account via CLI
+- FR-003: Add account via REST API
+- FR-006: Remove account
+- Architecture reference: sections "Security Architecture", "Configuration Management"
+
+---
+
 ### Story 2.2: Mozilla Thunderbird Autoconfig Fallback
 
 As a developer,  
@@ -878,72 +927,24 @@ So that Mail Reactor operates statelessly without external dependencies while ma
 
 ---
 
-### Story 2.7: Startup Account Configuration via CLI Flag
+### Story 2.7: ~~Startup Account Configuration via CLI Flag~~ [CANCELLED]
 
-As a developer,  
-I want to add my email account during server startup using `--account` flag,  
-So that I can get Mail Reactor running with zero additional configuration steps.
+**Status:** CANCELLED - Superseded by Story 2.1.2 (CLI Account Management with Encrypted Storage)
 
-**Acceptance Criteria:**
+**Original Goal:** Enable `--account` flag for single-account startup configuration.
 
-**Given** the `mailreactor start` command from Story 1.4  
-**When** enhancing with account configuration  
-**Then** `mailreactor start` supports account flags:
-- `--account EMAIL` - Email address to connect (triggers interactive password prompt)
-- `--imap-host HOST` - Override IMAP server (optional)
-- `--imap-port PORT` - Override IMAP port (optional, default: 993)
-- `--imap-ssl / --no-imap-ssl` - SSL enabled/disabled (optional, default: enabled)
-- `--smtp-host HOST` - Override SMTP server (optional)
-- `--smtp-port PORT` - Override SMTP port (optional, default: 587)
-- `--smtp-starttls / --no-smtp-starttls` - STARTTLS enabled/disabled (optional, default: enabled)
+**Why Cancelled:** SPIKE-003 established a more comprehensive account management approach:
+- Story 2.1.2 implements persistent encrypted config file (vs ephemeral `--account` flag)
+- Multi-account support from day one (vs single account limitation)
+- Hot reload mechanism enables account changes without restart
+- CLI commands provide full CRUD operations (add/edit/remove/list)
 
-**And** Account setup flow during startup with console output:
-1. Parse CLI flags
-2. If `--account` provided:
-   - Display: "[INFO]  Configuring account email={email}"
-   - Auto-detect IMAP/SMTP settings (unless manual overrides provided)
-   - Display: "[INFO]  Provider detected provider=Gmail" (or "Using manual configuration")
-   - Prompt for password (using `getpass`, not echoed): "Password: "
-   - Display: "[INFO]  Connecting to IMAP..." (with spinner via `rich.progress`)
-   - Display: "[INFO]  Authenticating..." (with spinner)
-   - Display: "[INFO]  Testing SMTP..." (with spinner)
-   - Success: "[INFO]  Account connected ✓ email={email}"
-   - Add account to StateManager
-3. If `--account` not provided:
-   - Display: "[INFO]  No account configured (add with --account or POST /accounts)"
-4. Proceed to start server
+**Functionality Moved To:**
+- Account addition: `mailreactor accounts add` (Story 2.1.2)
+- Account configuration: `~/.config/mailreactor/config.toml` (Story 2.1.2)
+- Password management: Master password encryption (Story 2.1.2)
 
-**And** Startup examples:
-- **Auto-detect Gmail:** `mailreactor start --account you@gmail.com`
-- **Manual config:** `mailreactor start --account you@custom.com --imap-host imap.custom.com --smtp-host smtp.custom.com`
-- **No account:** `mailreactor start` (configure later via API)
-
-**And** Error handling with helpful console output:
-- Invalid email format: "[ERROR] Invalid email address format"
-- Auto-detection failed: 
-  ```
-  [ERROR] Unable to auto-detect settings domain=custom.com
-  [INFO]  Try: mailreactor start --account you@custom.com --imap-host imap.custom.com --smtp-host smtp.custom.com
-  ```
-- Connection failed: Display error, suggest remediation, exit with code 1
-- User cancels password prompt (Ctrl+C): "[WARN]  Account setup cancelled" → exit gracefully
-
-**And** Server startup delayed until account validation completes:
-- Account validation happens before starting Uvicorn
-- If validation fails, server never starts (fail fast)
-- Total startup time still under 5 seconds (including account validation)
-
-**Prerequisites:** Stories 1.4 (start command), 2.1-2.4 (account detection and validation)
-
-**Technical Notes:**
-- Use `getpass.getpass()` for password input (no terminal echo)
-- Use `typer.prompt()` for interactive prompts with nice formatting
-- Validate account before starting server (fail fast principle)
-- Store account in StateManager before Uvicorn starts
-- FR-002: Add account via CLI flag with interactive password prompt
-- FR-034: Single command to run: `mailreactor start --account you@gmail.com`
-- PRD MVP Goal: "Single command to run: `mailreactor start --account you@gmail.com`"
-- This is the **primary DX mechanism**, not a separate subcommand
+**Reference:** SPIKE-003-cli-account-management.md
 
 ---
 
