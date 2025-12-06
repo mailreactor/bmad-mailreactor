@@ -98,8 +98,13 @@ Mail Reactor is a self-hosted, open-source headless email client that transforms
 # Install Mail Reactor
 pipx install mailreactor
 
-# Start the server (zero configuration)
+# Initialize with your email account
+mailreactor init
+# (Interactive wizard: email, password detection, connection validation, master password)
+
+# Start the server
 mailreactor start
+# (Prompts for master password or reads MAILREACTOR_PASSWORD env var)
 
 # API available at http://localhost:8000
 # OpenAPI docs at http://localhost:8000/docs
@@ -142,8 +147,9 @@ mailreactor dev
 | **Testing** | pytest + pytest-asyncio | latest | All | Python standard, async test support, excellent plugin ecosystem |
 | **Python Version** | 3.10+ | 3.10+ | All | Modern async features, structural pattern matching, better type hints |
 | **State Management** | Stateless (MVP) | - | STATE-* | NFR-P1: 3-second startup, horizontal scalability, zero dependencies |
-| **Provider Detection** | JSON/YAML config | - | ACCOUNT-* | Simple, maintainable, covers Gmail/Outlook/Yahoo/iCloud/custom |
-| **Credential Storage** | In-memory only (MVP) | - | AUTH-* | Per NFR-S1, stateless architecture requirement |
+| **Provider Detection** | YAML config + Mozilla Autoconfig | - | ACCOUNT-* | Hardcoded common providers, Mozilla fallback (1000+ providers), ISP autoconfig |
+| **Credential Storage** | Encrypted file (YAML) | - | AUTH-*, CONFIG-* | Fernet + PBKDF2, master password required, project-local config |
+| **Configuration Format** | YAML (mailreactor.yaml) | - | CONFIG-* | Human-readable, custom !encrypted tag, project-local (like docker-compose.yaml) |
 | **Error Handling** | FastAPI exceptions + custom base | - | All | Consistent error responses, proper HTTP status codes, clear messages |
 | **API Documentation** | OpenAPI/Swagger + ReDoc | Auto | API-* | Auto-generated from FastAPI, interactive testing, always up-to-date |
 
@@ -175,7 +181,9 @@ mailreactor/
 │       │   ├── smtp_client.py       # SMTP wrapper (async)
 │       │   ├── message_parser.py    # Email parsing and normalization
 │       │   ├── provider_detector.py # Auto-detect IMAP/SMTP settings
-│       │   └── state_manager.py     # In-memory state (MVP)
+│       │   ├── config.py            # YAML config file operations
+│       │   ├── encryption.py        # Password encryption (PBKDF2 + Fernet)
+│       │   └── connection_validator.py # IMAP/SMTP connection validation
 │       │
 │       ├── models/                  # Pydantic models
 │       │   ├── __init__.py
@@ -188,13 +196,12 @@ mailreactor/
 │       ├── cli/                     # Typer CLI commands
 │       │   ├── __init__.py
 │       │   ├── server.py            # Start/stop server commands
-│       │   ├── account_cli.py       # Account management CLI
+│       │   ├── init.py              # mailreactor init wizard
 │       │   └── utils.py             # CLI utilities
 │       │
 │       └── utils/                   # Shared utilities
 │           ├── __init__.py
 │           ├── logging.py           # structlog configuration
-│           ├── providers.yaml       # Email provider configurations
 │           └── async_helpers.py     # Async utility functions
 │
 ├── tests/
@@ -222,14 +229,14 @@ mailreactor/
 
 | FR Category | Primary Modules | Key Technologies |
 | ----------- | --------------- | ---------------- |
-| **ACCOUNT-\*** (Account Management) | `core/account.py`, `api/accounts.py`, `models/account.py` | FastAPI, IMAPClient, Pydantic |
+| **ACCOUNT-\*** (Account Management) | `core/config.py`, `core/encryption.py`, `core/provider_detector.py`, `core/connection_validator.py`, `cli/init.py` | PyYAML, cryptography (Fernet/PBKDF2), IMAPClient, aiosmtplib, httpx |
 | **EMAIL-SEND-\*** (Email Sending) | `core/smtp_client.py`, `api/send.py`, `models/message.py` | aiosmtplib, FastAPI, Pydantic |
 | **EMAIL-RETRIEVE-\*** (Email Retrieval) | `core/imap_client.py`, `api/messages.py`, `models/message.py` | IMAPClient, asyncio executor, FastAPI |
 | **EMAIL-SEARCH-\*** (Email Search) | `core/imap_client.py`, `api/messages.py` | IMAPClient SEARCH command, FastAPI query params |
 | **SYSTEM-MONITOR-\*** (Health & Monitoring) | `api/health.py`, `utils/logging.py` | FastAPI, structlog |
-| **INSTALL-\*** (Installation & Deployment) | `cli/server.py`, `__main__.py` | Typer, Uvicorn, setuptools |
-| **AUTH-\*** (Authentication & Security) | `config.py`, `api/dependencies.py` | Pydantic Settings, FastAPI dependencies |
-| **STATE-\*** (State Management) | `core/state_manager.py` | Python dict (in-memory), asyncio locks |
+| **INSTALL-\*** (Installation & Deployment) | `cli/server.py`, `cli/init.py`, `__main__.py` | Typer, Uvicorn, setuptools |
+| **AUTH-\*** (Authentication & Security) | `config.py`, `core/encryption.py`, `api/dependencies.py` | Pydantic Settings, cryptography, FastAPI dependencies |
+| **CONFIG-\*** (Configuration Management) | `core/config.py`, `core/encryption.py`, `models/account.py` | PyYAML, cryptography, Pydantic |
 | **API-\*** (API Design & Standards) | `api/*`, `models/responses.py` | FastAPI, Pydantic, OpenAPI |
 
 ## Technology Stack Details
@@ -344,40 +351,101 @@ class AsyncSMTPClient:
         )
 ```
 
-**Provider Auto-Detection**
+**Provider Auto-Detection (Epic 2)**
+```python
+# core/provider_detector.py - Multi-source detection cascade
+import httpx
+import yaml
+from pathlib import Path
+
+class ProviderDetector:
+    """Auto-detect IMAP/SMTP settings from email address.
+    
+    Detection cascade:
+    1. Local providers.yaml (Gmail, Outlook, Yahoo, iCloud) - instant, offline
+    2. Mozilla Thunderbird Autoconfig API (1000+ providers) - 5s timeout
+    3. ISP autoconfig (provider-specific) - 5s timeout  
+    4. None (manual configuration required)
+    """
+    
+    def __init__(self):
+        # Load hardcoded providers from core/providers.yaml
+        providers_path = Path(__file__).parent / "providers.yaml"
+        with providers_path.open("r") as f:
+            self.providers = yaml.safe_load(f)
+    
+    async def detect(self, email: str) -> Optional[ProviderConfig]:
+        """Detect provider settings from email address."""
+        domain = email.split("@")[1].lower()
+        
+        # 1. Check local providers.yaml (fast path)
+        if domain in self.providers:
+            return ProviderConfig(**self.providers[domain])
+        
+        # 2. Query Mozilla Autoconfig
+        mozilla_config = await self._query_mozilla(domain)
+        if mozilla_config:
+            return mozilla_config
+        
+        # 3. Query ISP autoconfig
+        isp_config = await self._query_isp(domain)
+        if isp_config:
+            return isp_config
+        
+        # 4. No detection possible
+        return None
+    
+    async def _query_mozilla(self, domain: str) -> Optional[ProviderConfig]:
+        """Query Mozilla Thunderbird autoconfig database."""
+        url = f"https://autoconfig.thunderbird.net/v1.1/{domain}"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            try:
+                response = await client.get(url)
+                if response.status_code == 200:
+                    return self._parse_autoconfig_xml(response.text)
+            except httpx.TimeoutException:
+                pass
+        return None
+```
+
+**Example providers.yaml:**
 ```yaml
-# utils/providers.yaml
-gmail:
-  imap:
-    host: imap.gmail.com
-    port: 993
-    ssl: true
-  smtp:
-    host: smtp.gmail.com
-    port: 587
-    starttls: true
+# core/providers.yaml - Hardcoded common providers
+gmail.com:
+  provider_name: Gmail
+  imap_host: imap.gmail.com
+  imap_port: 993
+  imap_ssl: true
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+  smtp_starttls: true
 
-outlook:
-  imap:
-    host: outlook.office365.com
-    port: 993
-    ssl: true
-  smtp:
-    host: smtp.office365.com
-    port: 587
-    starttls: true
+outlook.com:
+  provider_name: Outlook
+  imap_host: outlook.office365.com
+  imap_port: 993
+  imap_ssl: true
+  smtp_host: smtp.office365.com
+  smtp_port: 587
+  smtp_starttls: true
 
-yahoo:
-  imap:
-    host: imap.mail.yahoo.com
-    port: 993
-    ssl: true
-  smtp:
-    host: smtp.mail.yahoo.com
-    port: 587
-    starttls: true
+yahoo.com:
+  provider_name: Yahoo
+  imap_host: imap.mail.yahoo.com
+  imap_port: 993
+  imap_ssl: true
+  smtp_host: smtp.mail.yahoo.com
+  smtp_port: 587
+  smtp_starttls: true
 
-# ... more providers
+icloud.com:
+  provider_name: iCloud
+  imap_host: imap.mail.me.com
+  imap_port: 993
+  imap_ssl: true
+  smtp_host: smtp.mail.me.com
+  smtp_port: 587
+  smtp_starttls: true
 ```
 
 ## Novel Patterns & Design Decisions
@@ -823,228 +891,238 @@ async def test_list_messages_auth_error(mock_imap_auth_error):
     assert "authentication failed" in response.json()["detail"].lower()
 ```
 
-### 8. Encryption Pattern (Password Storage with Fernet + PBKDF2)
+### 8. Configuration Pattern (Project-Local YAML with Encryption)
 
-**Source:** Story 2.1.2, SPIKE-003
+**Source:** Epic 2 Revised, Course Correction 2025-12-06
 
-**Problem:** Passwords must be stored persistently (config file) but remain secure against theft, accidental exposure, or unauthorized access.
+**Problem:** Account credentials must persist across restarts while remaining secure and maintaining Mail Reactor's zero-configuration philosophy.
 
-**Solution:** Fernet symmetric encryption with PBKDF2 key derivation provides industry-standard encryption with minimal complexity.
+**Solution:** Project-local `mailreactor.yaml` file with encrypted passwords using Fernet + PBKDF2, following the mental model of `docker-compose.yaml`, `package.json`, and `.git/`.
+
+**Pattern Benefits:**
+- **Project-local:** Configuration lives where you use it, not in global directories
+- **Developer-friendly:** Familiar pattern (like `git init`, `npm init`)
+- **Secure:** Passwords encrypted at rest with master password
+- **Simple:** Single file, no database, no runtime state management
+- **Version-control friendly:** Config structure visible, passwords encrypted
 
 **Implementation:**
 
 ```python
-# core/encryption.py
+# core/config.py - YAML Config Operations
+from pathlib import Path
+import yaml
+from pydantic import BaseModel, EmailStr
+from .encryption import encrypt, decrypt
+
+class IMAPConfig(BaseModel):
+    host: str
+    port: int = 993
+    ssl: bool = True
+    username: str
+    password: str  # Decrypted in memory
+
+class SMTPConfig(BaseModel):
+    host: str
+    port: int = 587
+    starttls: bool = True
+    username: str
+    password: str  # Decrypted in memory
+
+class AccountConfig(BaseModel):
+    email: EmailStr
+    imap: IMAPConfig
+    smtp: SMTPConfig
+    
+    @classmethod
+    def from_yaml(cls, yaml_path: Path, master_password: str):
+        """Load config from YAML and decrypt passwords."""
+        with yaml_path.open("r") as f:
+            data = yaml.safe_load(f)
+        
+        # Decrypt IMAP password
+        imap_encrypted = data["imap"]["password"]  # !encrypted value from YAML
+        imap_password = decrypt(imap_encrypted, master_password)
+        
+        # Decrypt SMTP password
+        smtp_encrypted = data["smtp"]["password"]  # !encrypted value from YAML
+        smtp_password = decrypt(smtp_encrypted, master_password)
+        
+        return cls(
+            email=data["email"],
+            imap=IMAPConfig(**{**data["imap"], "password": imap_password}),
+            smtp=SMTPConfig(**{**data["smtp"], "password": smtp_password})
+        )
+
+def save_config(path: Path, config: AccountConfig, master_password: str) -> None:
+    """Save config to YAML with encrypted passwords."""
+    # Encrypt passwords
+    imap_encrypted = encrypt(config.imap.password, master_password)
+    smtp_encrypted = encrypt(config.smtp.password, master_password)
+    
+    # Build YAML structure
+    yaml_data = {
+        "email": config.email,
+        "imap": {
+            "host": config.imap.host,
+            "port": config.imap.port,
+            "ssl": config.imap.ssl,
+            "username": config.imap.username,
+            "password": f"!encrypted {imap_encrypted}"
+        },
+        "smtp": {
+            "host": config.smtp.host,
+            "port": config.smtp.port,
+            "starttls": config.smtp.starttls,
+            "username": config.smtp.username,
+            "password": f"!encrypted {smtp_encrypted}"
+        }
+    }
+    
+    with path.open("w") as f:
+        yaml.dump(yaml_data, f, default_flow_style=False)
+    
+    # Set secure permissions (user read/write only)
+    path.chmod(0o600)
+```
+
+**YAML File Structure:**
+
+```yaml
+# mailreactor.yaml
+email: user@gmail.com
+
+imap:
+  host: imap.gmail.com
+  port: 993
+  ssl: true
+  username: user@gmail.com
+  password: !encrypted gAAAAABhqK8s...  # Fernet-encrypted
+
+smtp:
+  host: smtp.gmail.com
+  port: 587
+  starttls: true
+  username: user@gmail.com
+  password: !encrypted gAAAAABhSMTP...  # Fernet-encrypted
+```
+
+**Encryption Implementation:**
+
+```python
+# core/encryption.py - PBKDF2 + Fernet Encryption
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
 from cryptography.hazmat.primitives import hashes
 import base64
-import secrets
+import os
 
-def generate_salt() -> str:
-    """Generate random salt for PBKDF2 (base64 encoded)."""
-    return base64.b64encode(secrets.token_bytes(32)).decode('utf-8')
+def generate_salt() -> bytes:
+    """Generate 32-byte random salt."""
+    return os.urandom(32)
 
-def derive_key(master_password: str, salt: str) -> bytes:
-    """Derive Fernet key from master password + salt using PBKDF2."""
+def derive_key(master_password: str, salt: bytes) -> bytes:
+    """Derive Fernet key from master password using PBKDF2."""
     kdf = PBKDF2(
         algorithm=hashes.SHA256(),
         length=32,
-        salt=base64.b64decode(salt),
-        iterations=100_000,  # OWASP recommendation
+        salt=salt,
+        iterations=100_000,  # OWASP 2023 standard
     )
-    key = kdf.derive(master_password.encode('utf-8'))
+    key = kdf.derive(master_password.encode())
     return base64.urlsafe_b64encode(key)
 
-def encrypt_password(password: str, key: bytes) -> str:
-    """Encrypt password with Fernet (symmetric encryption)."""
-    f = Fernet(key)
-    encrypted = f.encrypt(password.encode('utf-8'))
-    return encrypted.decode('utf-8')
+def encrypt(plaintext: str, master_password: str) -> str:
+    """Encrypt password with master password.
+    
+    Returns: <base64-salt><fernet-ciphertext> (single string for YAML)
+    """
+    salt = generate_salt()
+    key = derive_key(master_password, salt)
+    fernet = Fernet(key)
+    
+    ciphertext = fernet.encrypt(plaintext.encode())
+    
+    # Combine salt + ciphertext for storage
+    salt_b64 = base64.b64encode(salt).decode()
+    ciphertext_b64 = ciphertext.decode()
+    
+    return salt_b64 + ciphertext_b64
 
-def decrypt_password(encrypted: str, key: bytes) -> str:
-    """Decrypt password with Fernet."""
-    f = Fernet(key)
-    decrypted = f.decrypt(encrypted.encode('utf-8'))
-    return decrypted.decode('utf-8')
+def decrypt(encrypted: str, master_password: str) -> str:
+    """Decrypt password with master password.
+    
+    Args:
+        encrypted: <base64-salt><fernet-ciphertext> string
+        master_password: User's master password
+    
+    Returns: Decrypted plaintext password
+    
+    Raises:
+        cryptography.fernet.InvalidToken: Wrong master password
+    """
+    # Split salt and ciphertext
+    salt_b64 = encrypted[:44]  # Base64-encoded 32 bytes = 44 chars
+    ciphertext_b64 = encrypted[44:]
+    
+    salt = base64.b64decode(salt_b64)
+    key = derive_key(master_password, salt)
+    fernet = Fernet(key)
+    
+    plaintext = fernet.decrypt(ciphertext_b64.encode())
+    return plaintext.decode()
 ```
 
 **Security Properties:**
-- Fernet provides authenticated encryption (AES-128-CBC + HMAC-SHA256)
-- PBKDF2 slows down brute-force attacks (100k+ iterations)
-- Salt prevents rainbow table attacks
-- Master password never persisted to disk
-- Atomic file writes prevent partial reads
+- **Fernet:** Authenticated encryption (AES-128-CBC + HMAC-SHA256)
+- **PBKDF2:** 100,000 iterations slows brute-force attacks
+- **Salt:** Unique 32-byte salt per password prevents rainbow tables
+- **Master password:** Never written to disk (env var or prompt only)
+- **File permissions:** 0600 (user read/write only)
+- **Decrypted in memory:** Passwords only exist decrypted in process memory
+
+**Configuration Lifecycle:**
+
+```
+mailreactor init (wizard)
+    ↓
+Auto-detect provider settings
+    ↓
+Validate IMAP/SMTP connections
+    ↓
+Prompt for master password
+    ↓
+Encrypt passwords with master password
+    ↓
+Write mailreactor.yaml to current directory (0600 permissions)
+    ↓
+mailreactor start (reads config from cwd)
+    ↓
+Prompt for master password (or read from MAILREACTOR_PASSWORD env var)
+    ↓
+Decrypt credentials into memory
+    ↓
+Start server with AccountConfig loaded
+```
+
+**Single Account Model:**
+- One `mailreactor.yaml` per project directory
+- One account per Mail Reactor instance
+- Multi-account: Run multiple instances (different directories, different ports)
+- No runtime account management API (config file is source of truth)
 
 **When to Use:**
-- Storing sensitive credentials that must persist across restarts
-- Balancing security with operational simplicity (no external KMS)
-- Self-hosted environments where user controls master password
+- Self-hosted, single-user deployments (MVP use case)
+- Developer-friendly workflows (init → start pattern)
+- Security without external KMS complexity
 
 **Trade-offs:**
-- Master password required on every startup (env var or prompt)
-- Loss of master password = loss of access to accounts
-- Not suitable for multi-tenant SaaS (use HSM/KMS instead)
-
----
-
-### 9. TOML Config File Pattern (Persistent Account Storage)
-
-**Source:** Story 2.1.2, SPIKE-003
-
-**Problem:** Account configurations must persist across restarts, support multiple accounts, and remain human-readable for debugging.
-
-**Solution:** TOML file with atomic writes and structured validation via Pydantic.
-
-**Implementation:**
-
-```python
-# core/account_config.py
-from pathlib import Path
-import tomllib  # Python 3.11+
-import toml
-import os
-
-def get_config_path() -> Path:
-    """Get default config path: ~/.config/mailreactor/config.toml"""
-    return Path.home() / ".config" / "mailreactor" / "config.toml"
-
-def load_config(config_path: Path) -> dict:
-    """Load TOML config file."""
-    with open(config_path, "rb") as f:
-        return tomllib.load(f)
-
-def save_config(config_path: Path, data: dict):
-    """Save config with atomic write."""
-    # Write to temp file
-    temp_path = config_path.with_suffix(".tmp")
-    with open(temp_path, "w") as f:
-        toml.dump(data, f)
-    
-    # Atomic rename (POSIX)
-    os.replace(temp_path, config_path)
-    
-    # Set file permissions (user read/write only)
-    config_path.chmod(0o600)
-```
-
-**File Structure:**
-```toml
-[mailreactor]
-encryption_key_salt = "base64-encoded-32-bytes"
-
-[[accounts]]
-email = "user@example.com"
-encrypted_password = "fernet-encrypted-blob"
-imap_host = "imap.gmail.com"
-imap_port = 993
-imap_use_tls = true
-smtp_host = "smtp.gmail.com"
-smtp_port = 587
-smtp_use_tls = true
-```
-
-**Pattern Benefits:**
-- Human-readable format (easier debugging than JSON/binary)
-- Atomic writes prevent corruption
-- File permissions restrict access (0600)
-- Pydantic validation ensures required fields
-- Supports arrays of tables (`[[accounts]]`)
-
-**When to Use:**
-- Persistent configuration that changes infrequently
-- User-editable config (TOML more readable than JSON)
-- Single-file simplicity (no database required)
-
----
-
-### 10. Hot Reload Pattern (Config Change Detection via Polling)
-
-**Source:** Story 2.1.2, SPIKE-003
-
-**Problem:** Config file changes (via CLI, API, or manual edits) must be reflected in running process without restart.
-
-**Solution:** Background thread polling config file mtime every 5 seconds, triggering atomic reload on change.
-
-**Implementation:**
-
-```python
-# core/config_watcher.py
-import threading
-import time
-from pathlib import Path
-import structlog
-
-logger = structlog.get_logger(__name__)
-
-class ConfigWatcher:
-    """Watch config file for changes and trigger reload."""
-    
-    def __init__(self, config_path: Path, account_manager):
-        self.config_path = config_path
-        self.account_manager = account_manager
-        self._running = False
-        self._thread = None
-        self._last_mtime = 0
-    
-    def start(self):
-        """Start polling thread."""
-        if self.config_path.exists():
-            self._last_mtime = self.config_path.stat().st_mtime
-        
-        self._running = True
-        self._thread = threading.Thread(target=self._poll_loop, daemon=True)
-        self._thread.start()
-        logger.info("config_watcher_started", interval_seconds=5)
-    
-    def stop(self):
-        """Stop polling thread gracefully."""
-        self._running = False
-        if self._thread:
-            self._thread.join(timeout=10)
-        logger.info("config_watcher_stopped")
-    
-    def _poll_loop(self):
-        """5-second polling loop with mtime detection."""
-        while self._running:
-            time.sleep(5)
-            
-            if not self.config_path.exists():
-                continue
-            
-            current_mtime = self.config_path.stat().st_mtime
-            if current_mtime > self._last_mtime:
-                logger.info("config_changed", path=str(self.config_path))
-                try:
-                    self.account_manager.reload_config(self.config_path)
-                    self._last_mtime = current_mtime
-                except Exception as e:
-                    logger.error("reload_failed", error=str(e))
-                    raise  # Fail-fast: crash process
-```
-
-**Reload Behavior:**
-- **API writes:** Immediate reload (don't wait for polling)
-- **CLI writes:** Detected within 5 seconds
-- **Manual edits:** Detected within 5 seconds
-- **Malformed config:** Process crashes with clear error (fail-fast)
-
-**Why Polling vs File Watching:**
-- ✅ Simple, predictable, cross-platform identical behavior
-- ✅ Zero race conditions (file fully written before detection)
-- ✅ No external dependencies (stdlib only)
-- ✅ Negligible overhead (one `stat()` call per 5 seconds)
-- ✅ Natural debouncing window (multiple edits within 5s = single reload)
-
-**When to Use:**
-- Config files that change infrequently (< 1/minute)
-- Cross-platform consistency required
-- Simplicity preferred over instant detection
-
-**Trade-offs:**
-- 5-second delay for CLI/manual changes (API writes bypass polling)
-- Background thread overhead (minimal)
-- Not suitable for high-frequency config changes
+- ✅ Simpler than multi-account runtime management
+- ✅ Familiar developer pattern (docker-compose, git)
+- ✅ Config lives with project (not hidden in ~/.config)
+- ⚠️ Master password required at startup
+- ⚠️ Lost master password = must re-run init
+- ⚠️ Multi-account = multiple instances (acceptable for MVP)
 
 ---
 
@@ -1252,43 +1330,35 @@ class SendEmailResponse(BaseModel):
     timestamp: datetime
 ```
 
-### State Management (MVP - In-Memory)
+### State Management (Stateless Architecture)
 
-**State Structure:**
-```python
-# core/state_manager.py
-from typing import Dict
-import asyncio
-
-class StateManager:
-    """Thread-safe in-memory state management"""
-    
-    def __init__(self):
-        self._accounts: Dict[str, AccountCredentials] = {}
-        self._lock = asyncio.Lock()
-    
-    async def add_account(self, account_id: str, credentials: AccountCredentials):
-        async with self._lock:
-            self._accounts[account_id] = credentials
-    
-    async def get_account(self, account_id: str) -> Optional[AccountCredentials]:
-        async with self._lock:
-            return self._accounts.get(account_id)
-    
-    async def remove_account(self, account_id: str):
-        async with self._lock:
-            self._accounts.pop(account_id, None)
-
-# Singleton instance
-state_manager = StateManager()
-```
+**Design Philosophy:** Mail Reactor is stateless by design. Configuration is loaded at startup from `mailreactor.yaml` and held in memory for the lifetime of the process.
 
 **State Lifecycle:**
-1. Application starts → empty state
-2. API calls add accounts → stored in-memory
-3. Application stops → state lost (by design for MVP)
+1. `mailreactor start` loads and decrypts `mailreactor.yaml`
+2. `AccountConfig` object created in memory with decrypted credentials
+3. FastAPI app uses this single account for all operations
+4. Application stops → no state persistence needed (config file remains)
 
-**Phase 2 Enhancement:** IMAP-as-database for optional persistence
+**No Runtime Account Management:**
+- No add/remove account APIs (removed from original Epic 2 design)
+- No runtime state manager or storage backend abstraction
+- Config file is the source of truth
+- Changes require editing `mailreactor.yaml` (or re-running `mailreactor init`)
+
+**Multi-Account Support:**
+- Run multiple Mail Reactor instances on different ports
+- Each instance in its own directory with its own `mailreactor.yaml`
+- Example:
+  ```bash
+  # Personal email
+  cd ~/mail-personal && mailreactor start --port 8000
+  
+  # Work email
+  cd ~/mail-work && mailreactor start --port 8001
+  ```
+
+**Phase 2 Enhancement:** Optional orchestrator for managing multiple instances, IMAP-as-database for webhook tracking
 
 ## API Contracts
 
@@ -1325,22 +1395,18 @@ X-API-Key: your-api-key-here
 
 ### Key Endpoints (MVP)
 
-**Account Management:**
-- `POST /api/v1/accounts` - Add email account
-- `GET /api/v1/accounts/{account_id}` - Get account details
-- `DELETE /api/v1/accounts/{account_id}` - Remove account
-- `POST /api/v1/accounts/{account_id}/test` - Test connection
+**Note:** Account management endpoints removed in Epic 2 course correction. Configuration managed via `mailreactor init` wizard and `mailreactor.yaml` file.
 
 **Email Retrieval:**
-- `GET /api/v1/accounts/{account_id}/messages` - List messages
-- `GET /api/v1/accounts/{account_id}/messages/{message_id}` - Get message
-- `GET /api/v1/accounts/{account_id}/folders` - List folders
-- `GET /api/v1/accounts/{account_id}/search` - Search messages
+- `GET /api/v1/messages` - List messages
+- `GET /api/v1/messages/{message_id}` - Get message
+- `GET /api/v1/folders` - List folders
+- `GET /api/v1/search` - Search messages
 
 **Email Sending:**
-- `POST /api/v1/accounts/{account_id}/send` - Send email
-- `POST /api/v1/accounts/{account_id}/reply/{message_id}` - Reply to email
-- `POST /api/v1/accounts/{account_id}/forward/{message_id}` - Forward email
+- `POST /api/v1/send` - Send email
+- `POST /api/v1/reply/{message_id}` - Reply to email
+- `POST /api/v1/forward/{message_id}` - Forward email
 
 **System:**
 - `GET /health` - Health check
@@ -1380,14 +1446,20 @@ X-API-Key: your-api-key-here
    - MVP: Single shared key
    - Phase 2: Per-account keys
 
-2. **Credential Storage**
-   - In-memory only (not persisted to disk)
-   - Passwords marked with `exclude=True` in Pydantic
-   - Never logged or serialized in responses
+2. **Credential Storage (Epic 2 Revised)**
+   - **Encrypted at rest:** Passwords encrypted in `mailreactor.yaml` using Fernet
+   - **Master password:** Required at startup (env var or interactive prompt)
+   - **PBKDF2 key derivation:** 100,000 iterations (OWASP 2023 standard)
+   - **Unique salt:** 32-byte random salt per password (prevents rainbow tables)
+   - **File permissions:** `mailreactor.yaml` set to 0600 (user read/write only)
+   - **Decrypted in memory:** Passwords exist decrypted only in process memory
+   - **Never logged:** Passwords marked with `exclude=True` in Pydantic models
+   - **Never serialized:** Password fields excluded from API responses
 
 3. **TLS/SSL for Email**
    - IMAP: SSL by default (port 993)
    - SMTP: STARTTLS by default (port 587)
+   - TLS certificate verification enabled
    - Configurable per provider
 
 4. **Input Validation**
@@ -1401,14 +1473,7 @@ X-API-Key: your-api-key-here
    - Detailed errors in development
    - No stack traces in API responses
    - Sensitive data redacted from logs
-
-6. **Password Encryption (Story 2.1.2)**
-   - Fernet symmetric encryption (AES-128-CBC + HMAC-SHA256)
-   - PBKDF2 key derivation: 100,000+ iterations (OWASP standard)
-   - Random 32-byte salt (base64 encoded, stored in config.toml)
-   - Master password from `MAILREACTOR_PASSWORD` env var or runtime prompt
-   - Passwords encrypted at rest, decrypted in memory
-   - Atomic file writes prevent config corruption
+   - Provider-specific hints for common errors (Gmail App Passwords, etc.)
 
 **Phase 2 Security Enhancements:**
 - Rate limiting per IP/account
@@ -1516,7 +1581,9 @@ services:
     environment:
       - MAILREACTOR_LOG_LEVEL=INFO
       - MAILREACTOR_API_KEY=your-secret-key
+      - MAILREACTOR_PASSWORD=your-master-password  # For decrypting config
     volumes:
+      - ./mailreactor.yaml:/app/mailreactor.yaml:ro  # Mount config file
       - ./logs:/app/logs
 ```
 
@@ -1569,6 +1636,7 @@ MAILREACTOR_LOG_LEVEL=INFO
 
 # Security
 MAILREACTOR_API_KEY=your-secret-api-key
+MAILREACTOR_PASSWORD=your-master-password  # For decrypting mailreactor.yaml
 
 # Performance
 MAILREACTOR_MAX_WORKERS=10
@@ -1579,20 +1647,38 @@ MAILREACTOR_ENABLE_WEBHOOKS=false
 MAILREACTOR_ENABLE_IMAP_AS_DATABASE=false
 ```
 
-**Config File (optional):**
+**Account Config File (required - created by `mailreactor init`):**
 ```yaml
-# mailreactor.yaml
-server:
-  host: 0.0.0.0
-  port: 8000
-  log_level: INFO
+# mailreactor.yaml (project-local, in current directory)
+email: user@gmail.com
 
-security:
-  api_key: ${MAILREACTOR_API_KEY}  # From env var
+imap:
+  host: imap.gmail.com
+  port: 993
+  ssl: true
+  username: user@gmail.com
+  password: !encrypted gAAAAABhqK8s...  # Encrypted with master password
 
-performance:
-  max_workers: 10
-  request_timeout: 30
+smtp:
+  host: smtp.gmail.com
+  port: 587
+  starttls: true
+  username: user@gmail.com
+  password: !encrypted gAAAAABhSMTP...  # Encrypted with master password
+```
+
+**Multi-Account Deployment Pattern:**
+```bash
+# Run multiple instances for multiple accounts
+# Each instance in its own directory with its own mailreactor.yaml
+
+# Personal email (port 8000)
+cd ~/mail-personal
+MAILREACTOR_PASSWORD=personal-master mailreactor start --port 8000 &
+
+# Work email (port 8001)
+cd ~/mail-work
+MAILREACTOR_PASSWORD=work-master mailreactor start --port 8001 &
 ```
 
 ## Development Environment
@@ -1626,6 +1712,9 @@ pre-commit install
 
 # Run tests
 pytest
+
+# Initialize account configuration (interactive wizard)
+mailreactor init
 
 # Run with auto-reload (development)
 mailreactor dev
@@ -1839,6 +1928,47 @@ ruff format .
 - Standard logging: Not structured, harder to parse
 - loguru: Great DX but less structured
 - python-json-logger: Less features than structlog
+
+---
+
+### ADR-007: Project-Local Configuration with Encrypted Credentials
+
+**Status:** Accepted (Course Correction 2025-12-06, replaces original Epic 2 design)
+
+**Context:** Original Epic 2 design used global config file (`~/.config/mailreactor/config.toml`) with account management REST API. This created complexity (hot-reload, StateManager, multi-account runtime management) that conflicted with Mail Reactor's "zero-configuration" positioning.
+
+**Decision:** Use project-local `mailreactor.yaml` configuration with `mailreactor init` wizard and master password encryption.
+
+**Rationale:**
+- **Developer mental model:** Aligns with `git init`, `npm init`, `docker-compose.yaml` patterns
+- **Simplicity:** No account management API, no runtime state, no hot-reload polling
+- **Security:** Fernet + PBKDF2 encryption, master password never persisted
+- **Project isolation:** Each directory = one account, config lives with usage
+- **Zero-config promise:** `mailreactor init` → auto-detection → `mailreactor start`
+- **Multi-account:** Multiple instances (different directories/ports) acceptable for MVP
+
+**Consequences:**
+- ✅ Simpler architecture: No StateManager, no account CRUD API, no hot-reload
+- ✅ Faster implementation: 6 stories vs 8, less code to maintain
+- ✅ Better UX: Wizard-driven setup, provider auto-detection
+- ✅ Clearer mental model: One directory = one account
+- ⚠️ Master password required at startup (env var or prompt)
+- ⚠️ Multi-account via multiple instances (orchestrator can come in Phase 2)
+- ⚠️ Lost master password = must re-run `mailreactor init`
+
+**Alternatives Considered:**
+- Global config + account API: Too complex, conflicts with stateless architecture
+- OAuth2 only: Deferred to Phase 2, doesn't solve app password use case
+- Plaintext config: Unacceptable security risk
+- External KMS: Too heavy for self-hosted MVP
+
+**Removed from Original Design:**
+- `POST /accounts`, `GET /accounts`, `DELETE /accounts` REST endpoints
+- `mailreactor account add/list/remove` CLI commands
+- `~/.config/mailreactor/config.toml` global config
+- Hot-reload polling mechanism (5-second file watching)
+- StateManager with namespaced keys (`account:*`, `webhook:*`, `email:*`)
+- Multi-account runtime orchestration
 
 ---
 
