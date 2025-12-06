@@ -446,11 +446,11 @@ The following functional requirements define WHAT capabilities Mail Reactor must
 
 **FR-001:** System can auto-detect IMAP/SMTP server settings for common email providers (Gmail, Outlook, Yahoo, iCloud) based on email domain
 
-**FR-002:** Users can add email account via CLI flag (`--account email@domain.com`) with interactive password prompt
+**FR-002:** Users can initialize Mail Reactor with email account via `mailreactor init` wizard with interactive provider detection, connection validation, and master password setup
 
-**FR-003:** Users can add email account via REST API (`POST /accounts`) with email and credential payload
+**FR-003:** System guides users through setup wizard: email input → provider auto-detection → password entry → connection validation → master password creation
 
-**FR-004:** System securely stores account credentials in memory for the duration of the session
+**FR-004:** System securely stores account credentials in encrypted `mailreactor.yaml` file using Fernet encryption with PBKDF2 key derivation (100,000 iterations)
 
 **FR-005:** System can connect to IMAP server using auto-detected or user-provided settings
 
@@ -460,9 +460,9 @@ The following functional requirements define WHAT capabilities Mail Reactor must
 
 **FR-008:** System validates account credentials on connection and reports clear error messages for failures
 
-**FR-009:** Users can retrieve list of configured accounts via API (`GET /accounts`)
+**FR-009:** System loads account configuration from project-local `mailreactor.yaml` file on startup
 
-**FR-010:** Users can retrieve details of specific account via API (`GET /accounts/{id}`)
+**FR-010:** System prompts for master password (or reads from `MAILREACTOR_PASSWORD` env var) to decrypt credentials at startup
 
 ### Email Sending
 
@@ -518,7 +518,7 @@ The following functional requirements define WHAT capabilities Mail Reactor must
 
 **FR-033:** System has zero external system dependencies (pure Python, no database, no Redis)
 
-**FR-034:** Users can start Mail Reactor with single command: `mailreactor start --account email@domain.com`
+**FR-034:** Users can start Mail Reactor with single command: `mailreactor start` (after running `mailreactor init`)
 
 **FR-035:** System starts and becomes operational within 3 seconds
 

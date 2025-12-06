@@ -50,17 +50,22 @@ development_status:
   1-8-development-mode-with-hot-reload: done  # Completed (2025-12-04), Tests: 137 passed, dev command with auto-reload, DRY refactoring, comprehensive docs
   epic-1-retrospective: completed  # Completed (2025-12-04), Retro saved: epic-1-retro-2025-12-04.md, Action items: 2, Documentation updates: 4 patterns added to architecture.md
 
-  # Epic 2: Email Account Connection (8 stories, 10 FRs)
-  epic-2: contexted  # Tech spec created: tech-spec-epic-2.md (2025-12-05)
+  # Epic 2: Email Account Connection (REVISED 2025-12-06 - see course-correction-epic-2-2025-12-06.md)
+  # Course correction: Simplified from multi-account API to single-account project-local config with mailreactor init wizard
+  epic-2: contexted  # Tech spec created: tech-spec-epic-2-REVISED.md (2025-12-06), Architecture updated (Winston), PRD updated (John), APPROVED by HC (2025-12-06)
   2-1-provider-configuration-and-basic-auto-detection: done  # Completed (2025-12-05), Refactored, Tests: 26 passed, Coverage: 100% (provider_detector.py, account.py), 4 providers + 14 aliases
-  2-1-2-cli-account-management-with-encrypted-storage: drafted  # Drafted (2025-12-05), From SPIKE-003, Can run parallel with 2-2, Implements encrypted TOML config + CLI/API account management + hot reload
-  2-2-mozilla-thunderbird-autoconfig-fallback: drafted
-  2-3-manual-imap-smtp-configuration-override: backlog
-  2-4-account-connection-validation-and-error-handling: backlog
-  2-5-account-listing-and-retrieval-api: backlog
-  2-6-in-memory-state-management-for-accounts: backlog
-  2-7-startup-account-configuration-via-cli-flag: cancelled  # Superseded by Story 2.1.2 (CLI account management with encrypted config file)
-  2-8-account-removal-api: backlog
+  2-1-2-cli-account-management-with-encrypted-storage: cancelled  # Superseded by Epic 2 course correction - see tech-spec-epic-2-REVISED.md
+  2-2-mozilla-thunderbird-autoconfig-fallback: backlog  # To be re-drafted based on revised Epic 2 spec
+  # NEW Epic 2 Stories (from tech-spec-epic-2-REVISED.md):
+  # Story 2.4: mailreactor init wizard - backlog
+  # Story 2.5: YAML config file operations with !encrypted tag - backlog
+  # Story 2.6: mailreactor start with master password decryption - backlog
+  # REMOVED Stories (no longer needed):
+  # - Old Story 2.1.2: CLI Account Management with Encrypted Storage (multi-account API removed)
+  # - Old Story 2.4: StateManager with account storage (StateManager removed)
+  # - Old Story 2.5: Account Listing and Retrieval API (account API removed)
+  # - Old Story 2.7: Startup account configuration via CLI flag (replaced by init workflow)
+  # - Old Story 2.8: Account Removal API (account API removed)
   epic-2-retrospective: optional
 
   # Epic 3: Email Sending Capability (5 stories, 8 FRs)
