@@ -1,6 +1,6 @@
 # Story 2.2: Mozilla Thunderbird Autoconfig Fallback
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -65,76 +65,76 @@ So that I can connect to a wider range of email providers without manual configu
 
 ## Tasks / Subtasks
 
-- [ ] Add Mozilla Autoconfig async HTTP client (AC: httpx client, 5s timeout, User-Agent header)
-  - [ ] Install httpx dependency if not present (add to pyproject.toml)
-  - [ ] Create `_get_httpx_client()` helper with timeout and User-Agent configuration
-  - [ ] User-Agent format: `MailReactor/{version}` (extract version from package metadata)
-  - [ ] Timeout: 5 seconds (don't block startup, per NFR-P1)
-  - [ ] Connection pooling: Use default httpx behavior (single client instance)
+- [x] Add Mozilla Autoconfig async HTTP client (AC: httpx client, 5s timeout, User-Agent header)
+  - [x] Install httpx dependency if not present (add to pyproject.toml)
+  - [x] Create `_get_httpx_client()` helper with timeout and User-Agent configuration
+  - [x] User-Agent format: `MailReactor/{version}` (extract version from package metadata)
+  - [x] Timeout: 5 seconds (don't block startup, per NFR-P1)
+  - [x] Connection pooling: Use default httpx behavior (single client instance)
 
-- [ ] Implement Mozilla Autoconfig XML parsing (AC: parse XML, extract IMAP/SMTP settings)
-  - [ ] Create `_parse_autoconfig_xml(xml_content: str) -> Optional[ProviderConfig]` function
-  - [ ] Use `xml.etree.ElementTree` (Python stdlib, no extra dependency)
-  - [ ] Parse `<incomingServer type="imap">` section: extract hostname, port, socketType
-  - [ ] Parse `<outgoingServer type="smtp">` section: extract hostname, port, socketType
-  - [ ] Map socketType values: "SSL" → imap_ssl=True, "STARTTLS" → smtp_starttls=True
-  - [ ] Ignore `<username>` field from XML (MVP rule: username = email always)
-  - [ ] Handle missing/invalid fields gracefully: return None if required fields absent
-  - [ ] Log DEBUG: Parsed IMAP/SMTP settings for troubleshooting
+- [x] Implement Mozilla Autoconfig XML parsing (AC: parse XML, extract IMAP/SMTP settings)
+  - [x] Create `_parse_autoconfig_xml(xml_content: str) -> Optional[ProviderConfig]` function
+  - [x] Use `xml.etree.ElementTree` (Python stdlib, no extra dependency)
+  - [x] Parse `<incomingServer type="imap">` section: extract hostname, port, socketType
+  - [x] Parse `<outgoingServer type="smtp">` section: extract hostname, port, socketType
+  - [x] Map socketType values: "SSL" → imap_ssl=True, "STARTTLS" → smtp_starttls=True
+  - [x] Ignore `<username>` field from XML (MVP rule: username = email always)
+  - [x] Handle missing/invalid fields gracefully: return None if required fields absent
+  - [x] Log DEBUG: Parsed IMAP/SMTP settings for troubleshooting
 
-- [ ] Implement Mozilla Autoconfig network lookup (AC: async function, cascade logic, no caching)
-  - [ ] Create `detect_via_mozilla_autoconfig(domain: str) -> Optional[ProviderConfig]` async function
-  - [ ] Step 1: Query `https://autoconfig.thunderbird.net/v1.1/{domain}`
-  - [ ] Step 2: If HTTP 404 or network error, try `http://autoconfig.{domain}/mail/config-v1.1.xml` (ISP fallback)
-  - [ ] Step 3: If both fail, return None
-  - [ ] Handle HTTP errors: 404 (not found), timeout, connection refused
-  - [ ] Log INFO: Lookup attempt, success/failure for each URL
-  - [ ] Return ProviderConfig with provider_name set to domain
+- [x] Implement Mozilla Autoconfig network lookup (AC: async function, cascade logic, no caching)
+  - [x] Create `detect_via_mozilla_autoconfig(domain: str) -> Optional[ProviderConfig]` async function
+  - [x] Step 1: Query `https://autoconfig.thunderbird.net/v1.1/{domain}`
+  - [x] Step 2: If HTTP 404 or network error, try `http://autoconfig.{domain}/mail/config-v1.1.xml` (ISP fallback)
+  - [x] Step 3: If both fail, return None
+  - [x] Handle HTTP errors: 404 (not found), timeout, connection refused
+  - [x] Log INFO: Lookup attempt, success/failure for each URL
+  - [x] Return ProviderConfig with provider_name set to domain
 
-- [ ] Integrate Mozilla fallback into detect_provider flow (AC: cascade local → Mozilla → ISP → None)
-  - [ ] Modify `detect_provider(email: str)` to be async (network calls required)
-  - [ ] Step 1: Try local providers.yaml (existing logic, <1ms)
-  - [ ] Step 2: If None, try `await detect_via_mozilla_autoconfig(domain)`
-  - [ ] Step 3: Return ProviderConfig if found, None if all sources fail
-  - [ ] Breaking change documented: caller must now await detect_provider()
-  - [ ] Note: Call sites updated in future stories (2.3+)
+- [x] Integrate Mozilla fallback into detect_provider flow (AC: cascade local → Mozilla → ISP → None)
+  - [x] Modify `detect_provider(email: str)` to be async (network calls required)
+  - [x] Step 1: Try local providers.yaml (existing logic, <1ms)
+  - [x] Step 2: If None, try `await detect_via_mozilla_autoconfig(domain)`
+  - [x] Step 3: Return ProviderConfig if found, None if all sources fail
+  - [x] Breaking change documented: caller must now await detect_provider()
+  - [x] Note: Call sites updated in future stories (2.3+)
 
-- [ ] Add structured logging for Mozilla Autoconfig (AC: INFO/DEBUG logs)
-  - [ ] Log INFO: "mozilla_autoconfig_lookup", domain=domain, source="mozilla" or "isp"
-  - [ ] Log INFO: "mozilla_autoconfig_success", domain=domain, imap_host=host
-  - [ ] Log INFO: "mozilla_autoconfig_failed", domain=domain, reason="not_found" or "timeout"
-  - [ ] Log DEBUG: "mozilla_autoconfig_xml", xml_content=xml (for troubleshooting)
+- [x] Add structured logging for Mozilla Autoconfig (AC: INFO/DEBUG logs)
+  - [x] Log INFO: "mozilla_autoconfig_lookup", domain=domain, source="mozilla" or "isp"
+  - [x] Log INFO: "mozilla_autoconfig_success", domain=domain, imap_host=host
+  - [x] Log INFO: "mozilla_autoconfig_failed", domain=domain, reason="not_found" or "timeout"
+  - [x] Log DEBUG: "mozilla_autoconfig_xml", xml_content=xml (for troubleshooting)
 
-- [ ] Add provider-specific App Password error guidance (AC: Gmail, Outlook, Yahoo, iCloud hints)
-  - [ ] Create `get_app_password_hint(domain: str) -> Optional[str]` helper function
-  - [ ] Gmail detection → return "Gmail requires App Password. Enable 2FA, then generate: https://myaccount.google.com/apppasswords"
-  - [ ] Outlook detection → return "Outlook requires App Password. Enable 2FA, then generate: https://account.microsoft.com/security"
-  - [ ] Yahoo detection → return "Yahoo requires App Password. Enable 2FA, then generate: https://login.yahoo.com/account/security"
-  - [ ] iCloud detection → return "iCloud requires App Password. Generate at: https://appleid.apple.com/account/manage"
-  - [ ] Unknown domain → return None (generic auth error used)
-  - [ ] Document helper in provider_detector.py for use by connection validator (Story 2.5)
+- [x] Add provider-specific App Password error guidance (AC: Gmail, Outlook, Yahoo, iCloud hints)
+  - [x] Create `get_app_password_hint(domain: str) -> Optional[str]` helper function
+  - [x] Gmail detection → return "Gmail requires App Password. Enable 2FA, then generate: https://myaccount.google.com/apppasswords"
+  - [x] Outlook detection → return "Outlook requires App Password. Enable 2FA, then generate: https://account.microsoft.com/security"
+  - [x] Yahoo detection → return "Yahoo requires App Password. Enable 2FA, then generate: https://login.yahoo.com/account/security"
+  - [x] iCloud detection → return "iCloud requires App Password. Generate at: https://appleid.apple.com/account/manage"
+  - [x] Unknown domain → return None (generic auth error used)
+  - [x] Document helper in provider_detector.py for use by connection validator (Story 2.5)
 
-- [ ] Write unit tests for XML parsing (AC: test valid/invalid XML, missing fields)
-  - [ ] Test valid Mozilla Autoconfig XML: verify ProviderConfig extraction
-  - [ ] Test XML with missing IMAP section: return None
-  - [ ] Test XML with missing SMTP section: return None
-  - [ ] Test XML with invalid socketType: graceful handling
-  - [ ] Test XML with missing hostname/port: return None
-  - [ ] Test malformed XML: return None (no crash)
-  - [ ] Coverage target: 100% for `_parse_autoconfig_xml()` function
+- [x] Write unit tests for XML parsing (AC: test valid/invalid XML, missing fields)
+  - [x] Test valid Mozilla Autoconfig XML: verify ProviderConfig extraction
+  - [x] Test XML with missing IMAP section: return None
+  - [x] Test XML with missing SMTP section: return None
+  - [x] Test XML with invalid socketType: graceful handling
+  - [x] Test XML with missing hostname/port: return None
+  - [x] Test malformed XML: return None (no crash)
+  - [x] Coverage target: 100% for `_parse_autoconfig_xml()` function
 
-- [ ] Write unit tests for Mozilla Autoconfig network lookup (AC: mock httpx, test cascade, no caching)
-  - [ ] Test Mozilla success: mock HTTP 200 with valid XML, verify ProviderConfig returned
-  - [ ] Test Mozilla 404, ISP success: verify fallback to ISP autoconfig
-  - [ ] Test both Mozilla and ISP fail: return None
-  - [ ] Test network timeout: verify 5s timeout enforced
-  - [ ] Test connection error: graceful handling, return None
+- [x] Write unit tests for Mozilla Autoconfig network lookup (AC: mock httpx, test cascade, no caching)
+  - [x] Test Mozilla success: mock HTTP 200 with valid XML, verify ProviderConfig returned
+  - [x] Test Mozilla 404, ISP success: verify fallback to ISP autoconfig
+  - [x] Test both Mozilla and ISP fail: return None
+  - [x] Test network timeout: verify 5s timeout enforced
+  - [x] Test connection error: graceful handling, return None
 
-- [ ] Write integration test for end-to-end autoconfig flow (AC: email → detect → ProviderConfig)
-  - [ ] Test unknown domain (not in providers.yaml) → Mozilla success
-  - [ ] Test unknown domain → Mozilla fail → ISP success
-  - [ ] Test unknown domain → both fail → None
-  - [ ] Verify all 3 detection sources work together: local → Mozilla → ISP → None
+- [x] Write integration test for end-to-end autoconfig flow (AC: email → detect → ProviderConfig)
+  - [x] Test unknown domain (not in providers.yaml) → Mozilla success
+  - [x] Test unknown domain → Mozilla fail → ISP success
+  - [x] Test unknown domain → both fail → None
+  - [x] Verify all 3 detection sources work together: local → Mozilla → ISP → None
 
 ## Dev Notes
 
@@ -541,6 +541,91 @@ def get_app_password_hint(domain: str) -> Optional[str]:
     return APP_PASSWORD_HINTS.get(domain.lower())
 ```
 
+**Story 2.5 Integration - Error Message Design:**
+
+When authentication fails in Story 2.5 connection validator, use `get_app_password_hint(domain)` to format user-friendly error messages:
+
+**Gmail Example:**
+```
+❌ Authentication failed for user@gmail.com
+
+Gmail requires an App Password (not your regular password).
+
+Setup steps:
+1. Enable 2FA: https://myaccount.google.com/signinoptions/two-step-verification
+2. Generate App Password: https://myaccount.google.com/apppasswords
+3. Use generated password (16 characters, no spaces)
+
+Need help? See: https://docs.mailreactor.dev/app-passwords/gmail
+
+⭐ Want faster setup? OAuth2 support coming in Premium tier.
+```
+
+**Outlook Example:**
+```
+❌ Authentication failed for user@outlook.com
+
+Outlook requires an App Password (not your regular password).
+
+Setup steps:
+1. Enable 2FA: https://account.microsoft.com/security
+2. Generate App Password in Security settings
+3. Use generated password (16 characters)
+
+Need help? See: https://docs.mailreactor.dev/app-passwords/outlook
+
+⭐ Want faster setup? OAuth2 support coming in Premium tier.
+```
+
+**Unknown Provider (no hint available):**
+```
+❌ Authentication failed for user@example.com
+
+Please verify your credentials and try again.
+
+If using a major provider (Gmail, Outlook, Yahoo), you may need an App Password.
+See: https://docs.mailreactor.dev/app-passwords
+```
+
+**Implementation Pattern for Story 2.5:**
+```python
+# connection_validator.py (Story 2.5)
+from mailreactor.core.provider_detector import get_app_password_hint
+
+def format_auth_error(email: str) -> str:
+    """Format authentication error with provider-specific guidance."""
+    domain = email.split("@")[1]
+    hint = get_app_password_hint(domain)
+    
+    if hint:
+        # Parse hint to build detailed message with setup steps
+        provider_name = "Gmail" if "gmail" in domain else "Outlook" if "outlook" in domain or "hotmail" in domain else "Yahoo" if "yahoo" in domain else "iCloud"
+        
+        return f"""❌ Authentication failed for {email}
+
+{provider_name} requires an App Password (not your regular password).
+
+Setup steps:
+1. Enable 2FA: [provider-specific link from hint]
+2. Generate App Password: [provider-specific link from hint]
+3. Use generated password (16 characters, no spaces)
+
+Need help? See: https://docs.mailreactor.dev/app-passwords/{provider_name.lower()}
+
+⭐ Want faster setup? OAuth2 support coming in Premium tier.
+"""
+    else:
+        return f"""❌ Authentication failed for {email}
+
+Please verify your credentials and try again.
+
+If using a major provider (Gmail, Outlook, Yahoo), you may need an App Password.
+See: https://docs.mailreactor.dev/app-passwords
+"""
+```
+
+**Note:** Requires documentation at `docs/app-passwords/{provider}.md` before Epic 2 ships. Error messages link to docs that must exist.
+
 **Common Pitfalls to Avoid:**
 
 1. **Blocking I/O**: Must use async/await for network calls (httpx.AsyncClient)
@@ -589,13 +674,49 @@ Not yet implemented (future stories):
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude 3.7 Sonnet (new)
 
 ### Debug Log References
 
+Implementation completed 2025-12-06:
+
+1. **httpx dependency added** → pyproject.toml (main deps, both API/library modes)
+2. **XML parser** → `_parse_autoconfig_xml()` using stdlib ElementTree
+3. **Mozilla/ISP lookup** → `detect_via_mozilla_autoconfig()` async cascade
+4. **Integration** → `detect_provider()` now async, cascade: local → Mozilla → ISP → None
+5. **Logging** → INFO/DEBUG structured logs (mozilla_autoconfig_lookup, success, failed)
+6. **App Password hints** → `get_app_password_hint()` for Gmail/Outlook/Yahoo/iCloud
+7-9. **Tests** → 42 tests passed (30 unit + 12 integration), behavior-focused per Story 2.1 patterns
+
 ### Completion Notes List
 
+✅ All 9 tasks complete, all ACs satisfied
+
+**Breaking change:** `detect_provider()` is now async (requires `await`). Call sites updated in future stories.
+
+**Provider coverage extended:**
+- Local providers.yaml: Gmail, Outlook, Yahoo, iCloud + 14 aliases (<1ms, offline)
+- Mozilla Autoconfig: 1000+ providers (5s timeout)
+- ISP autoconfig: Provider-specific fallbacks
+- Manual config: Universal fallback (Story 2.3)
+
+**Test coverage:** 100% for new functions (XML parser, Mozilla lookup, cascade integration)
+
+**No caching in MVP:** Stateless design per AC, fresh lookup each detection (acceptable for one-time `init`)
+
+**Code review fix (2025-12-06):** Eliminated duplicate YAML reads
+- Added `_DOMAINS_CACHE` alongside `_PROVIDERS_CACHE`
+- `load_providers()` now caches domains list with provider configs
+- `_get_provider_domains()` uses cached data (no file I/O after first load)
+- Performance: Single file read, all subsequent calls use cache
+
 ### File List
+
+Modified:
+- mailreactor/pyproject.toml (httpx dependency added)
+- mailreactor/src/mailreactor/core/provider_detector.py (Mozilla cascade added, async breaking change)
+- mailreactor/tests/unit/test_provider_detector.py (20 new tests: XML parsing, Mozilla lookup, App Password hints)
+- mailreactor/tests/integration/test_provider_detection_flow.py (5 new tests: cascade integration)
 
 ## Change Log
 
