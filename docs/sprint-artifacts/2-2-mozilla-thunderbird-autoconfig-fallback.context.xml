@@ -1,0 +1,267 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>2.2</storyId>
+    <title>Mozilla Thunderbird Autoconfig Fallback</title>
+    <status>drafted</status>
+    <generatedAt>2025-12-06</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/2-2-mozilla-thunderbird-autoconfig-fallback.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>a developer</asA>
+    <iWant>Mail Reactor to use Mozilla's Thunderbird Autoconfig database for unknown providers</iWant>
+    <soThat>I can connect to a wider range of email providers without manual configuration</soThat>
+    <tasks>
+      - Add Mozilla Autoconfig async HTTP client (AC: httpx client, 5s timeout, User-Agent header)
+      - Implement Mozilla Autoconfig XML parsing (AC: parse XML, extract IMAP/SMTP settings)
+      - Implement Mozilla Autoconfig network lookup (AC: async function, cascade logic, no caching)
+      - Integrate Mozilla fallback into detect_provider flow (AC: cascade local → Mozilla → ISP → None)
+      - Add structured logging for Mozilla Autoconfig (AC: INFO/DEBUG logs)
+      - Add provider-specific App Password error guidance (AC: Gmail, Outlook, Yahoo, iCloud hints)
+      - Write unit tests for XML parsing (AC: test valid/invalid XML, missing fields)
+      - Write unit tests for Mozilla Autoconfig network lookup (AC: mock httpx, test cascade, no caching)
+      - Write integration test for end-to-end autoconfig flow (AC: email → detect → ProviderConfig)
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    Given Story 2.1 provider detection foundation exists
+    When extending for broader provider support via Mozilla Autoconfig
+    Then src/mailreactor/core/provider_detector.py is enhanced with:
+    - detect_via_mozilla_autoconfig(domain: str) -> Optional[ProviderConfig] async function
+    - Queries Mozilla Autoconfig database via HTTP: https://autoconfig.thunderbird.net/v1.1/{domain}
+    - Parses XML response to extract IMAP/SMTP server settings (hostname, port, socketType)
+    - Falls back to trying autoconfig.{domain}/mail/config-v1.1.xml (ISP-hosted config)
+    - Returns ProviderConfig if successful, None if not found
+
+    And Detection strategy follows this cascade:
+    1. Check local providers.yaml (fast, offline)
+    2. If not found, try Mozilla Autoconfig (network call)
+    3. If not found, try ISP-hosted autoconfig (network call)
+    4. If all fail, return None (requires manual configuration)
+
+    And Mozilla Autoconfig responses are NOT cached in MVP:
+    - Each detection performs fresh lookup (stateless design)
+    - 5-second timeout prevents excessive delay
+    - Future: Epic 6 (IMAP-as-database) could add persistent cache
+
+    And Network calls include:
+    - 5-second timeout (don't block startup)
+    - Proper error handling (network failures, invalid XML, missing fields)
+    - User-Agent header: MailReactor/{version}
+
+    And Logging captures:
+    - INFO: "Mozilla Autoconfig lookup for domain: {domain}"
+    - INFO: "Mozilla Autoconfig success for {domain}" or "Mozilla Autoconfig failed for {domain}"
+    - DEBUG: Full XML response for troubleshooting
+
+    And XML parsing handles:
+    - incomingServer type="imap" sections for IMAP config
+    - outgoingServer type="smtp" sections for SMTP config
+    - hostname, port, socketType (SSL/STARTTLS) fields
+    - Invalid/incomplete configurations gracefully (skip and try next source)
+    - Ignore username field (MVP rule: username = email always)
+
+    And MVP authentication rule (documented in Dev Notes):
+    - Username: Always equals email address (hardcoded rule, no overrides in MVP)
+    - Password: Same for IMAP and SMTP (unified authentication)
+    - Passwords encrypted at rest in mailreactor.yaml (Fernet + PBKDF2)
+    - Master password required to decrypt (env var or interactive prompt)
+    - Applies to all auto-detected providers (local + Mozilla + ISP)
+
+    And App Password requirement for major providers (documented in Dev Notes):
+    - Gmail, Outlook, Yahoo, iCloud require App Passwords (standard password auth deprecated)
+    - Users must enable 2FA on provider account first
+    - Provider-specific App Password generation links provided in error messages
+    - Connection validation (Story 2.5) will detect auth failures and suggest App Password setup
+    - OAuth 2.0 as premium feature (Phase 2) - better UX, no App Password setup required
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-2-REVISED.md</path>
+        <title>Epic 2 Technical Specification (REVISED)</title>
+        <section>Story 2.2: Mozilla Thunderbird Autoconfig Fallback</section>
+        <snippet>Detection cascade: local providers.yaml → Mozilla Autoconfig API → ISP-hosted autoconfig → manual configuration. Mozilla Autoconfig provides coverage for 1000+ email providers via https://autoconfig.thunderbird.net/v1.1/{domain}. XML parsing extracts IMAP/SMTP settings. No caching in MVP (stateless design).</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/course-correction-epic-2-2025-12-06.md</path>
+        <title>Epic 2 Course Correction</title>
+        <section>Revised Architecture: Project-Local Configuration</section>
+        <snippet>Shifted from multi-account API to project-local mailreactor.yaml config. Auto-detection used by mailreactor init wizard. Single account per instance. Username = email (hardcoded MVP rule). Passwords encrypted with master password (Fernet + PBKDF2).</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Mail Reactor Architecture</title>
+        <section>Provider Auto-Detection Integration</section>
+        <snippet>Multi-source detection cascade implemented in core/provider_detector.py. Hardcoded providers.yaml for Gmail/Outlook/Yahoo/iCloud. Mozilla fallback via httpx queries. ISP autoconfig as second fallback. Returns Optional[ProviderConfig].</snippet>
+      </doc>
+      <doc>
+        <path>docs/prd.md</path>
+        <title>Product Requirements Document</title>
+        <section>FR-001: Auto-detect IMAP/SMTP settings</section>
+        <snippet>System can auto-detect IMAP/SMTP server settings for common email providers based on email domain. Extended via Mozilla Autoconfig to cover 1000+ providers.</snippet>
+      </doc>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Epic Breakdown</title>
+        <section>Epic 2: Email Account Connection - Story 2.2</section>
+        <snippet>Mozilla Thunderbird Autoconfig fallback enables broader provider coverage. Queries Mozilla API, parses XML, handles ISP fallback. In-memory cache with 24hr TTL for successful lookups, 1hr for failures.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>mailreactor/src/mailreactor/core/provider_detector.py</path>
+        <kind>service</kind>
+        <symbol>detect_provider</symbol>
+        <lines>N/A</lines>
+        <reason>Existing provider detection service from Story 2.1 - will be extended with Mozilla Autoconfig fallback. Current implementation has local providers.yaml lookup only.</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor/src/mailreactor/core/providers.yaml</path>
+        <kind>config</kind>
+        <symbol>N/A</symbol>
+        <lines>N/A</lines>
+        <reason>Hardcoded provider configurations for Gmail, Outlook, Yahoo, iCloud (Story 2.1). Used as first tier in detection cascade before Mozilla fallback.</reason>
+      </artifact>
+      <artifact>
+        <path>mailreactor/src/mailreactor/models/account.py</path>
+        <kind>model</kind>
+        <symbol>ProviderConfig</symbol>
+        <lines>N/A</lines>
+        <reason>Pydantic model for IMAP/SMTP server configuration. Returned by detect_provider() after successful auto-detection. Contains imap_host, imap_port, smtp_host, smtp_port, SSL/STARTTLS settings.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <python>
+        <package name="httpx" version="^0.27.0" reason="Async HTTP client for Mozilla/ISP autoconfig queries. Timeout support, connection pooling, async-native." />
+        <package name="xml.etree.ElementTree" version="stdlib" reason="XML parsing for Mozilla Autoconfig responses. Parse incomingServer/outgoingServer sections." />
+        <package name="pydantic" version="^2.0" reason="Data validation for ProviderConfig model. Already in use from Story 2.1." />
+        <package name="structlog" version="latest" reason="Structured logging for autoconfig lookup events. Already in use from Epic 1." />
+      </python>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Username must always equal email address (MVP hardcoded rule, no template system, no overrides)
+    - Passwords must be same for IMAP and SMTP (unified authentication model)
+    - No caching of Mozilla Autoconfig responses in MVP (stateless design, fresh lookup each time)
+    - 5-second timeout on network calls to prevent blocking mailreactor init wizard
+    - Mozilla Autoconfig XML parsing must handle incomplete/invalid configs gracefully (return None, don't crash)
+    - User-Agent header required: MailReactor/{version} (identify ourselves to Mozilla service)
+    - Breaking change: detect_provider() becomes async (await required for all callers)
+    - Detection cascade order: local providers.yaml → Mozilla → ISP → None (must follow this sequence)
+    - Logging must not include sensitive data (passwords, full emails - domain only)
+    - Testing: Only test our code (not httpx library, not Python stdlib xml parsing)
+    - File location constraint: All code in mailreactor/src/mailreactor/core/ (not project root docs/)
+    - Test location constraint: All tests in mailreactor/tests/ (separate from source)
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>detect_via_mozilla_autoconfig</name>
+      <kind>async function</kind>
+      <signature>async def detect_via_mozilla_autoconfig(domain: str) -> Optional[ProviderConfig]</signature>
+      <path>mailreactor/src/mailreactor/core/provider_detector.py</path>
+      <description>Query Mozilla Autoconfig database for provider settings. Returns ProviderConfig if found, None if not found or on error. Handles Mozilla URL and ISP fallback URL.</description>
+    </interface>
+    <interface>
+      <name>_parse_autoconfig_xml</name>
+      <kind>function</kind>
+      <signature>def _parse_autoconfig_xml(xml_content: str) -> Optional[ProviderConfig]</signature>
+      <path>mailreactor/src/mailreactor/core/provider_detector.py</path>
+      <description>Parse Mozilla Autoconfig XML response. Extract IMAP/SMTP settings (hostname, port, socketType). Return ProviderConfig or None if invalid/incomplete.</description>
+    </interface>
+    <interface>
+      <name>get_app_password_hint</name>
+      <kind>function</kind>
+      <signature>def get_app_password_hint(domain: str) -> Optional[str]</signature>
+      <path>mailreactor/src/mailreactor/core/provider_detector.py</path>
+      <description>Get provider-specific App Password setup guidance for Gmail, Outlook, Yahoo, iCloud. Used by connection validator (Story 2.5) for helpful error messages. Returns None for unknown domains.</description>
+    </interface>
+    <interface>
+      <name>detect_provider</name>
+      <kind>async function (breaking change)</kind>
+      <signature>async def detect_provider(email: str) -> Optional[ProviderConfig]</signature>
+      <path>mailreactor/src/mailreactor/core/provider_detector.py</path>
+      <description>EXISTING INTERFACE - MODIFIED TO ASYNC. Cascade detection: local → Mozilla → ISP → None. Breaking change: now requires await. Callers must be updated (Story 2.3+).</description>
+    </interface>
+    <interface>
+      <name>Mozilla Autoconfig HTTP API</name>
+      <kind>External REST API</kind>
+      <signature>GET https://autoconfig.thunderbird.net/v1.1/{domain}</signature>
+      <path>External service (Mozilla Foundation)</path>
+      <description>Mozilla's public autoconfig database. Returns XML with IMAP/SMTP settings for supported domains. HTTP 404 if domain not found. No authentication required. Spec: https://wiki.mozilla.org/Thunderbird:Autoconfiguration</description>
+    </interface>
+    <interface>
+      <name>ISP Autoconfig HTTP API</name>
+      <kind>External REST API</kind>
+      <signature>GET http://autoconfig.{domain}/mail/config-v1.1.xml</signature>
+      <path>ISP-hosted (variable by domain)</path>
+      <description>ISP-hosted autoconfig endpoint. Same XML format as Mozilla. HTTP not HTTPS (by spec, acceptable risk - no credentials transmitted). Used as fallback when Mozilla returns 404.</description>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Testing follows project constraints:
+      - ✅ ONLY test functionality WE have added (not httpx, not xml.etree, not Python stdlib)
+      - ✅ Test our business logic (XML parsing, detection cascade, error handling)
+      - ❌ DO NOT test that httpx makes HTTP requests (library responsibility)
+      - ❌ DO NOT test that xml.etree parses XML (stdlib responsibility)
+      - Use mocks for external dependencies (httpx responses, network calls)
+      - Coverage target: 100% for new functions (detect_via_mozilla_autoconfig, _parse_autoconfig_xml)
+      - Test both success and failure paths
+      - Integration test verifies full cascade (local → Mozilla → ISP → None)
+    </standards>
+    <locations>
+      - mailreactor/tests/unit/test_provider_detector.py (add new tests to existing file)
+      - mailreactor/tests/integration/test_provider_detection_flow.py (add Mozilla/ISP cascade test)
+    </locations>
+    <ideas>
+      AC: XML Parsing Tests
+      - Test valid Mozilla Autoconfig XML: verify ProviderConfig extraction (hostname, port, socketType)
+      - Test XML with missing IMAP section: return None (graceful handling)
+      - Test XML with missing SMTP section: return None (graceful handling)
+      - Test XML with invalid socketType: graceful handling (default to SSL)
+      - Test XML with missing hostname/port: return None (required fields validation)
+      - Test malformed XML: return None (no crash, exception caught)
+      - Test XML with username field: verify ignored (MVP rule: username = email)
+
+      AC: Mozilla Autoconfig Network Lookup Tests
+      - Test Mozilla success: mock HTTP 200 with valid XML, verify ProviderConfig returned
+      - Test Mozilla 404, ISP success: verify fallback to ISP autoconfig URL
+      - Test both Mozilla and ISP fail: return None (graceful cascade end)
+      - Test network timeout: verify 5s timeout enforced, return None
+      - Test connection error: graceful handling, return None (no crash)
+      - Test User-Agent header: verify MailReactor/{version} sent in request
+
+      AC: Integration - End-to-End Autoconfig Flow
+      - Test unknown domain (not in providers.yaml) → Mozilla success → ProviderConfig returned
+      - Test unknown domain → Mozilla fail → ISP success → ProviderConfig returned
+      - Test unknown domain → both fail → None returned (manual config required)
+      - Verify all 3 detection sources work together: local → Mozilla → ISP → None
+
+      AC: App Password Hint Tests
+      - Test get_app_password_hint("gmail.com") → returns Gmail App Password hint with link
+      - Test get_app_password_hint("outlook.com") → returns Outlook hint
+      - Test get_app_password_hint("yahoo.com") → returns Yahoo hint
+      - Test get_app_password_hint("icloud.com") → returns iCloud hint
+      - Test get_app_password_hint("unknown.com") → returns None
+
+      AC: Logging Tests
+      - Test INFO log: "mozilla_autoconfig_lookup" with domain
+      - Test INFO log: "mozilla_autoconfig_success" with domain and imap_host
+      - Test INFO log: "mozilla_autoconfig_failed" with domain
+      - Test DEBUG log: "mozilla_autoconfig_xml" with full XML content (for troubleshooting)
+
+      AC: No Caching Tests
+      - Test multiple calls to detect_via_mozilla_autoconfig() → each performs fresh network call
+      - Verify no in-memory cache is used (stateless MVP design)
+      - Each detection is independent (no shared state between calls)
+    </ideas>
+  </tests>
+</story-context>

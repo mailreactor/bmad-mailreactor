@@ -1,6 +1,6 @@
 # Story 2.2: Mozilla Thunderbird Autoconfig Fallback
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
@@ -49,15 +49,17 @@ So that I can connect to a wider range of email providers without manual configu
 
 **And** MVP authentication rule (documented in Dev Notes):
 - Username: Always equals email address (hardcoded rule, no overrides in MVP)
-- Password: Same for IMAP and SMTP (unified authentication for Big 4)
-- Applies to all auto-detected providers (Big 4 + Mozilla Autoconfig results)
+- Password: Same for IMAP and SMTP (unified authentication)
+- Passwords encrypted at rest in `mailreactor.yaml` (Fernet + PBKDF2)
+- Master password required to decrypt (env var or interactive prompt)
+- Applies to all auto-detected providers (local + Mozilla + ISP)
 
-**And** Credential environment variables (documented in Dev Notes):
-- `MAILREACTOR_PASSWORD`: Default password for both IMAP and SMTP
-- `MAILREACTOR_IMAP_PASSWORD`: Override for IMAP only (advanced scenarios)
-- `MAILREACTOR_SMTP_PASSWORD`: Override for SMTP only (advanced scenarios)
-- Password resolution: specific override → default → prompt
-- `.env` file support via pydantic-settings (auto-loaded)
+**And** App Password requirement for major providers (documented in Dev Notes):
+- Gmail, Outlook, Yahoo, iCloud require App Passwords (standard password auth deprecated)
+- Users must enable 2FA on provider account first
+- Provider-specific App Password generation links provided in error messages
+- Connection validation (Story 2.5) will detect auth failures and suggest App Password setup
+- OAuth 2.0 as premium feature (Phase 2) - better UX, no App Password setup required
 
 **Prerequisites:** Story 2.1 (basic provider detection exists)
 
@@ -103,6 +105,15 @@ So that I can connect to a wider range of email providers without manual configu
   - [ ] Log INFO: "mozilla_autoconfig_failed", domain=domain, reason="not_found" or "timeout"
   - [ ] Log DEBUG: "mozilla_autoconfig_xml", xml_content=xml (for troubleshooting)
 
+- [ ] Add provider-specific App Password error guidance (AC: Gmail, Outlook, Yahoo, iCloud hints)
+  - [ ] Create `get_app_password_hint(domain: str) -> Optional[str]` helper function
+  - [ ] Gmail detection → return "Gmail requires App Password. Enable 2FA, then generate: https://myaccount.google.com/apppasswords"
+  - [ ] Outlook detection → return "Outlook requires App Password. Enable 2FA, then generate: https://account.microsoft.com/security"
+  - [ ] Yahoo detection → return "Yahoo requires App Password. Enable 2FA, then generate: https://login.yahoo.com/account/security"
+  - [ ] iCloud detection → return "iCloud requires App Password. Generate at: https://appleid.apple.com/account/manage"
+  - [ ] Unknown domain → return None (generic auth error used)
+  - [ ] Document helper in provider_detector.py for use by connection validator (Story 2.5)
+
 - [ ] Write unit tests for XML parsing (AC: test valid/invalid XML, missing fields)
   - [ ] Test valid Mozilla Autoconfig XML: verify ProviderConfig extraction
   - [ ] Test XML with missing IMAP section: return None
@@ -146,50 +157,89 @@ So that I can connect to a wider range of email providers without manual configu
 
 [Source: stories/2-1-provider-configuration-and-basic-auto-detection.md#Dev-Agent-Record]
 
-### Product Decisions from Party Mode Session (2025-12-05)
+### Product Decisions from Epic 2 Course Correction (2025-12-06)
 
-**Credential Strategy (MVP - Single Account):**
+**Epic 2 Architecture Revision:**
 
-1. **MVP Authentication Rule (Hardcoded, Forever):**
+Mail Reactor Epic 2 was course-corrected from multi-account API to project-local configuration model following established developer tool patterns (`git init`, `npm init`, `docker-compose.yaml`).
+
+**New Architecture (Approved 2025-12-06):**
+
+1. **Configuration Model:**
+   - Project-local `mailreactor.yaml` file (one per directory)
+   - Created via `mailreactor init` interactive wizard
+   - Encrypted passwords at rest (Fernet + PBKDF2)
+   - Master password required at startup (`MAILREACTOR_PASSWORD` env var or interactive prompt)
+
+2. **Single Account Per Instance:**
+   - One account per `mailreactor.yaml` (simplified architecture)
+   - Multi-account: Run multiple instances in different directories on different ports
+   - No runtime account management REST API
+
+3. **Provider Auto-Detection (Story 2.2 Scope):**
+   - Used by `mailreactor init` wizard (Story 2.4)
+   - Detection cascade: local providers.yaml → Mozilla → ISP → None
+   - If auto-detection fails, wizard prompts for manual configuration
+   - No caching (one-time operation during `init`)
+
+4. **MVP Authentication Rule (Hardcoded):**
    - Username = email address (always, for all providers)
    - Password: Same for both IMAP and SMTP (unified authentication)
-   - No username template system, no `--username` flags in MVP
-   - Applies to: Big 4 + Mozilla Autoconfig results + manual configuration
-   - Simple implementation: When creating IMAPConfig/SMTPConfig, use email as username
+   - Encrypted at rest in `mailreactor.yaml` using master password
+   - Decrypted at startup when running `mailreactor start`
 
-2. **Environment Variables (Password Only):**
-   - `MAILREACTOR_PASSWORD`: Default password for both IMAP and SMTP
-   - `MAILREACTOR_IMAP_PASSWORD`: Override for IMAP only (advanced: relay services)
-   - `MAILREACTOR_SMTP_PASSWORD`: Override for SMTP only (advanced: relay services)
-   - Password resolution: specific override → default → prompt if not set
-   - `.env` file auto-loaded by pydantic-settings
+**App Password Requirement (Major Providers - 2025 Industry Standard):**
 
-3. **CLI Flags (All Config Except Passwords and Username):**
-   - Required: `--account <email>`
-   - Optional overrides: `--imap-host`, `--imap-port`, `--imap-ssl`
-   - Optional overrides: `--smtp-host`, `--smtp-port`, `--smtp-starttls`
-   - NO `--password` flag (security risk: shell history, process listings)
-   - NO `--username` flags (MVP: username = email, hardcoded)
+All major providers have deprecated standard password authentication:
 
-4. **No Caching in MVP:**
-   - Auto-detection runs fresh each startup (stateless design)
-   - Users re-run command with flags (shell history = easy UX)
-   - 5-second timeout prevents excessive delay
-   - Future: Epic 6 (IMAP-as-database) could add persistent cache
+- **Gmail**: App Password required (2FA must be enabled first)
+  - Generate at: https://myaccount.google.com/apppasswords
+  - Standard password auth deprecated (May 1, 2025)
 
-5. **No Config File in MVP:**
-   - All configuration via CLI flags + env vars
-   - Users manage `.env` files themselves (direnv, dotenv, etc.)
-   - Stateless restart requires full config re-specification
+- **Outlook.com**: App Password required (2FA must be enabled first)
+  - Generate at: https://account.microsoft.com/security
+  - Standard password auth deprecated
 
-**Rationale:**
-- Shell history makes command reuse trivial (up arrow)
-- `.env` files = user's responsibility (standard practice)
-- Stateless design = clean, no hidden state
-- YAGNI: Don't cache what doesn't need caching
-- YAGNI: Don't template usernames when email works for 99% of cases
+- **Yahoo Mail**: App Password required (2FA must be enabled first)
+  - Generate at: https://login.yahoo.com/account/security
+  - Standard password auth deprecated
 
-[Source: Party mode session 2025-12-05, HC + team architectural decisions]
+- **iCloud Mail**: App Password required (2FA must be enabled first)
+  - Generate at: https://appleid.apple.com/account/manage
+  - Standard password auth deprecated
+
+**Free Tier (Epic 2 MVP):**
+- ✅ All 4 major providers supported via App Passwords
+- ✅ Custom/self-hosted servers via standard password auth
+- ✅ Mozilla Autoconfig extends to 1000+ providers
+- ✅ Provider-specific error messages guide App Password setup
+- ✅ 5-minute setup per provider (enable 2FA, generate App Password, enter in wizard)
+
+**Premium Tier (Phase 2 - OAuth 2.0):**
+- ⭐ One-click OAuth authentication (no App Password setup)
+- ⭐ "Sign in with Google/Microsoft/Yahoo" flow
+- ⭐ Automatic token refresh (no re-auth)
+- ⭐ Enterprise SSO support (Google Workspace, Microsoft 365)
+- ⭐ Better UX (optional upgrade, not required for functionality)
+
+**Story 2.2 Role in New Architecture:**
+
+- Provides `detect_provider(email)` async function for `mailreactor init` wizard
+- Mozilla Autoconfig fallback extends provider coverage to 1000+ providers
+- ISP autoconfig fallback for provider-specific configurations
+- Provides App Password error hint helper for connection validation (Story 2.5)
+- Graceful failure (return None) triggers manual configuration prompts in wizard
+
+**Removed from Original Epic 2 Scope:**
+- ❌ Environment variables for passwords (now encrypted in YAML)
+- ❌ CLI flags for account configuration (now interactive wizard)
+- ❌ Multi-account API endpoints (now single-account project-local config)
+- ❌ StateManager with hot-reload (now simple config file)
+
+[Source: docs/sprint-artifacts/course-correction-epic-2-2025-12-06.md]
+[Source: docs/sprint-artifacts/tech-spec-epic-2-REVISED.md]
+[Source: Google Workspace Updates - Less Secure Apps Deprecation]
+[Source: Microsoft Account Security - App Passwords]
 
 ### Architecture Patterns and Constraints
 
@@ -300,7 +350,7 @@ async def detect_via_mozilla_autoconfig(domain: str) -> Optional[ProviderConfig]
     return None
 ```
 
-[Source: docs/sprint-artifacts/tech-spec-epic-2.md#Mozilla-Autoconfig-External-Service]
+[Source: docs/sprint-artifacts/tech-spec-epic-2-REVISED.md#Story-2.2]
 [Source: docs/epics.md#Story-2.2-Mozilla-Thunderbird-Autoconfig-Fallback]
 [Source: docs/architecture.md#Integration-Points]
 
@@ -341,7 +391,9 @@ tests/
 
 1. **MVP Authentication Rule (Hardcoded):**
    - Username = email address (always, no exceptions in MVP)
-   - Password: Same for IMAP and SMTP (unified authentication for Big 4)
+   - Password: Same for IMAP and SMTP (unified authentication)
+   - Passwords stored encrypted in `mailreactor.yaml` (Fernet + PBKDF2)
+   - Master password required for decryption at startup
    - No username template system, no username flags
    - Simple: When creating IMAPConfig/SMTPConfig, use email as username
 
@@ -370,12 +422,12 @@ tests/
    - Step 3: ISP autoconfig (Story 2.2, async)
    - Step 4: Manual config (Story 2.3, user-provided)
 
-6. **Environment Variables (Password Only - MVP Decision):**
-   - `MAILREACTOR_PASSWORD`: Default for both IMAP and SMTP
-   - `MAILREACTOR_IMAP_PASSWORD`: Override for IMAP (relay services)
-   - `MAILREACTOR_SMTP_PASSWORD`: Override for SMTP (relay services)
-   - Resolution: specific override → default → prompt
-   - `.env` file auto-loaded by pydantic-settings
+6. **Configuration File (Project-Local):**
+   - `mailreactor.yaml` in current directory (like `docker-compose.yaml`)
+   - Created by `mailreactor init` wizard (Story 2.4)
+   - Contains encrypted IMAP/SMTP passwords (Fernet + PBKDF2)
+   - Master password required at startup (`MAILREACTOR_PASSWORD` env var or prompt)
+   - Auto-detected settings saved to file for reuse
 
 7. **Logging:**
    - INFO: Lookup attempts, success/failure
@@ -464,13 +516,38 @@ Integration test:
 - ✅ Verify cache improves performance (second call faster)
 - ❌ Don't test actual Mozilla Autoconfig service (mock httpx responses)
 
+**App Password Helper Function:**
+
+```python
+# core/provider_detector.py
+def get_app_password_hint(domain: str) -> Optional[str]:
+    """Get provider-specific App Password setup guidance.
+    
+    Used by connection validator (Story 2.5) to provide helpful error messages
+    when authentication fails for major providers.
+    """
+    APP_PASSWORD_HINTS = {
+        "gmail.com": "Gmail requires App Password. Enable 2FA, then generate: https://myaccount.google.com/apppasswords",
+        "googlemail.com": "Gmail requires App Password. Enable 2FA, then generate: https://myaccount.google.com/apppasswords",
+        "outlook.com": "Outlook requires App Password. Enable 2FA, then generate: https://account.microsoft.com/security",
+        "hotmail.com": "Outlook requires App Password. Enable 2FA, then generate: https://account.microsoft.com/security",
+        "live.com": "Outlook requires App Password. Enable 2FA, then generate: https://account.microsoft.com/security",
+        "yahoo.com": "Yahoo requires App Password. Enable 2FA, then generate: https://login.yahoo.com/account/security",
+        "ymail.com": "Yahoo requires App Password. Enable 2FA, then generate: https://login.yahoo.com/account/security",
+        "icloud.com": "iCloud requires App Password. Generate at: https://appleid.apple.com/account/manage",
+        "me.com": "iCloud requires App Password. Generate at: https://appleid.apple.com/account/manage",
+    }
+    
+    return APP_PASSWORD_HINTS.get(domain.lower())
+```
+
 **Common Pitfalls to Avoid:**
 
 1. **Blocking I/O**: Must use async/await for network calls (httpx.AsyncClient)
 2. **Timeout**: 5-second timeout prevents indefinite hangs
-3. **Cache Races**: Use asyncio.Lock to protect cache dict
-4. **XML Errors**: Handle malformed XML gracefully (return None, don't crash)
-5. **ISP HTTP**: ISP autoconfig uses HTTP, not HTTPS (by spec, acceptable risk)
+3. **XML Errors**: Handle malformed XML gracefully (return None, don't crash)
+4. **ISP HTTP**: ISP autoconfig uses HTTP, not HTTPS (by spec, acceptable risk)
+5. **App Password Messaging**: Don't suggest App Passwords for unknown/custom servers (only major providers)
 
 **FR Coverage:**
 
@@ -492,7 +569,8 @@ Not yet implemented (future stories):
 
 ### References
 
-- **Tech Spec**: [Source: docs/sprint-artifacts/tech-spec-epic-2.md#Story-2.2]
+- **Tech Spec**: [Source: docs/sprint-artifacts/tech-spec-epic-2-REVISED.md#Story-2.2]
+- **Course Correction**: [Source: docs/sprint-artifacts/course-correction-epic-2-2025-12-06.md]
 - **Epic Breakdown**: [Source: docs/epics.md#Epic-2-Email-Account-Connection]
 - **Architecture**: [Source: docs/architecture.md#Integration-Points]
 - **Mozilla Autoconfig Spec**: https://wiki.mozilla.org/Thunderbird:Autoconfiguration
@@ -507,7 +585,7 @@ Not yet implemented (future stories):
 
 ### Context Reference
 
-<!-- Path(s) to story context XML will be added here by context workflow -->
+- docs/sprint-artifacts/2-2-mozilla-thunderbird-autoconfig-fallback.context.xml
 
 ### Agent Model Used
 
@@ -555,3 +633,28 @@ Not yet implemented (future stories):
 - XML parsing now ignores `<username>` field completely
 - Detection remains: local → Mozilla → ISP → None (no caching)
 - Status: drafted, updated, ready for validation and context generation
+
+**2025-12-06:** Story 2.2 RE-DRAFTED by SM agent (Bob) after Epic 2 course correction
+- **CONTEXT:** Epic 2 architecture revised from multi-account API to project-local config (`mailreactor init` wizard)
+- **REMOVED:** All environment variable password configuration (MAILREACTOR_PASSWORD, etc.)
+- **REMOVED:** CLI flag strategy mentions (--account, --imap-host, etc.)
+- **REMOVED:** .env file auto-loading references (no longer using env vars)
+- **REMOVED:** No config file in MVP sections (NOW USING mailreactor.yaml)
+- **REPLACED:** With master password encryption model (PBKDF2 + Fernet)
+- **REPLACED:** With project-local mailreactor.yaml config file
+- **UPDATED:** Story now supports `mailreactor init` wizard (will use detect_provider cascade)
+- **UPDATED:** Detection cascade remains: local → Mozilla → ISP → None (unchanged)
+- **UPDATED:** XML parsing remains: extract IMAP/SMTP settings (unchanged)
+- **UPDATED:** Username rule remains: username = email (hardcoded, unchanged)
+- **UPDATED:** References updated to tech-spec-epic-2-REVISED.md
+- **STATUS:** Re-drafted based on revised Epic 2 architecture (approved 2025-12-06)
+
+**2025-12-06:** Story 2.2 UPDATED with App Password strategy (industry research - all Big 4 deprecated password auth)
+- **DISCOVERY:** Gmail, Outlook, Yahoo, iCloud all require App Passwords (standard password auth deprecated 2025)
+- **ADDED:** AC for App Password error guidance (provider-specific hints with setup links)
+- **ADDED:** Task for `get_app_password_hint(domain)` helper function (used by Story 2.5 connection validator)
+- **ADDED:** Product decisions section documenting App Password requirement for major providers
+- **ADDED:** Premium OAuth positioning (Phase 2 - better UX, not required for functionality)
+- **STRATEGY:** Free tier supports all 4 major providers via App Passwords, Premium OAuth adds seamless UX (revenue opportunity)
+- **DELIVERABLE:** Provider detection + App Password guidance (Story 2.5 will use hints for validation errors)
+- **STATUS:** Ready for validation and context generation

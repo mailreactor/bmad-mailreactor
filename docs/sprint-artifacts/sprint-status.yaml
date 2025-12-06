@@ -55,7 +55,7 @@ development_status:
   epic-2: contexted  # Tech spec created: tech-spec-epic-2-REVISED.md (2025-12-06), Architecture updated (Winston), PRD updated (John), APPROVED by HC (2025-12-06)
   2-1-provider-configuration-and-basic-auto-detection: done  # Completed (2025-12-05), Refactored, Tests: 26 passed, Coverage: 100% (provider_detector.py, account.py), 4 providers + 14 aliases
   2-1-2-cli-account-management-with-encrypted-storage: cancelled  # Superseded by Epic 2 course correction - see tech-spec-epic-2-REVISED.md
-  2-2-mozilla-thunderbird-autoconfig-fallback: backlog  # To be re-drafted based on revised Epic 2 spec
+  2-2-mozilla-thunderbird-autoconfig-fallback: ready-for-dev  # Context generated (2025-12-06), ready for implementation
   # NEW Epic 2 Stories (from tech-spec-epic-2-REVISED.md):
   # Story 2.4: mailreactor init wizard - backlog
   # Story 2.5: YAML config file operations with !encrypted tag - backlog
